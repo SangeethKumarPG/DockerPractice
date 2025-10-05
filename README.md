@@ -1,0 +1,336 @@
+# Docker
+A Docker file is used to create a template for the image. For this we create a Dockerfile in the particular folder of our project. inside this we need to specify a base image. this base image maybe an image present in the docker hub or something that is cached locally(if you have used docker pull). we use the FROM <image-name> for this. then we specify a working directory if we need one. we use WORKDIR <path> to specify this. Then we have to copy the files to the working directory. all the commands are being run in the working directory. so once working directory is specified we can easily run the required commands on the working directory. 
+
+COPY <source> <destination> command is used to copy files from a source folder in the image to the destination folder in the image. '.' specifies the root folder. To run commands in the docker image i.e commands to setup the environment we use the RUN command. to execute or run certain things inside the container once the image is ready we use CMD command. the syntax is CMD\['command','seperated","by","comma","and","doublequotes"\]. the spaces are seperated by comma and commands are wrapped in double quotes. and everything is enclosed in \[\] brackets.
+
+The EXPOSE <port> is a command used to expose a port to the system outside the container(the system that is running the container). this is done after the image is ready. the CMD commands must be last in the docker file. 
+
+docker build is a terminal command which creates a docker image based on the docker file. docker build will create a new image. 
+
+` docker build . ` indicates to build an image where the dockerfile is present in the same folder. 
+
+after you run the above command all the commands required for building the docker image will be run. then you need to run `docker images` to get the image id of the newly created image. to run the container use `docker run <imageid>` . this will run the image but the application will not be accessible to outside the container. for this we need to use `docker run -p <localport:internalport> imageid` this specifies that it will expose the application to localhost port 3000 in the system that runs the container, where the internal port is 80\. the -p indicates publish.
+
+  
+eg: docker run -p 3000:80 f0e9363347d8
+
+`docker ps` will list all docker runnning processes. `docker ps -a` will show all docker processes. `docker stop <containername>` will stop the container. the containername is present at the last column and it is assigned automatically.
+
+  
+You can also **just use the first (few) character(s)** \- just enough to have a unique identifier.
+
+So instead of
+
+```javaScript
+docker run abcdefg
+```
+
+you could also run
+
+```javaScript
+docker run abc
+```
+
+or, if there's no other image ID starting with "a", you could even run just:
+
+```javaScript
+docker run a
+```
+
+**This applies to ALL Docker commands where IDs are needed.**
+
+  
+**Images are read only. Once you create an image all the code and the files are moved into the file system of the image which is 'app' here. any changes you apply to the local files are not reflected to the files in the image file system unless you rebuild the image.**
+
+Images are layerbased. **Once you make a change in the file and build it. only the changes that we make(the docker instruction corresponding to the change such as copying the source file to the image filesystem etc) and the further instructions are evaluated again even if there are no changes in the subsequent docker instruction they are executed again.** if there are no changes when you run docker build the docker engine uses caching because there is no need to run the build again as there are no changes. in an image every instruction in the docker file creates a layer. when you run a container on the image it adds an extra layer over the image. the last layer becomes active when you run the image as a layer(the command that runs when you run the image). 
+
+**NOTE that the files are not actually not copied over from one folder to another folder. it only exists in the image, the container just utilizes the code in the image.** whenever you make a change it is not copied over and over. this makes it very efficient. your code, environment and dependencies are existing inside an isolated container. The concept of containers and images allows us to have multiple containers based on the same image but isolated from each other. By default containers based on same image does not share data or state.
+
+`**docker <command> --help**` **will show the documentation of the command.**
+
+If you don't have any changes in the files or dependencies the docker run command is not necessary. you can simply restart the container using `docker start <imageid>` 
+
+after running the docker start command it will keep running the container but you can run other commands because, it will not interrupt the shell. 
+
+**for docker run attach mode is the default**(we cannot enter other commands in the terminal), **for docker start** detach mode is the default(we can enter other commands to the same terminal). **Attached mode means that we are listening to the output from the terminal. So the output from the container (application) will be seen in the console.** 
+
+you can run the image with docker run in detach mode by passing the -d flag before the image id
+
+i.e, `docker run -p 8000:80 -d 2ddfgjnvsaa` 
+
+you can reattach to the docker container by 
+
+`docker container attach <container name/id>` 
+
+to see the logs of a container we can use `docker logs <container name/id>` this will show the past logs
+
+if you want to keep seeing the logs of a container we have to pass the follow flag to the docker logs command. this will attach ourself to the container's log output.
+
+`docker log -f <containerid/name>`
+
+if you want to restart a container with attach mode we can use 
+
+`docker start -a <containerid/name>` 
+
+Even though we are in attached mode doesn't mean that we can interact with the container application. For this we need to use 
+
+`docker run -it <containerid>` this will activate an iteractive pseudo terminal. after the process is completed it will stop the container automatically(in case of the python application).
+
+when restarting the container in attached mode we can only enter the input once, after this it is exited. to overcome this we need to make the container interactive in attached mode.
+
+`docker start -a -i <containerid>` 
+
+**you can remove a container by using the** `**docker rm <container name/id>** `command. make sure that the container is stopped, otherwise it will cause an error. **we can delete multiple containers at once by simply passing the container names seperated by white spaces.**
+
+`**docker rm <container1> <container2> <container3>**`
+
+  
+`**docker container prune**` **will remove all the stopped containers.**
+
+`**docker images** ` **list all the images you have.** you can remove images by using rmi command.
+
+`**docker rmi <imageid>**` . **you can only remove images once they are not being used by any containers, that includes stopped containers also.** 
+
+**to remove all the unused images we can use** `**docker image prune**` **command.** tagged images cannot be removed like this.
+
+ to remove tagged images `docker image prune -a` 
+
+**To automatically remove a container once it is exited we use the --rm** flag with the docker run command. eg: `docker run -p 3000:80 -d --rm <containerId>`. this is useful when you need to rebuild the image once the container is stopped(often used for containers which don't need restart). 
+
+The container is build on top of the image. The contents of the container are not copied again. The container is a wrapper around the image. Containers cannot change the code. But it can create additional files inside the container. `docker image inspect <imageId> ` used to inspect the structure of the image and the details about the image. 
+
+**docker cp command lets you copy files into a running container or out of a running container.**
+
+`**docker cp source destination**`
+
+if you want to copy all files inside a folder specify foldername/.
+
+**if either the source or destination is a container specify container\_name:/folder**
+
+eg: `docker cp dummy/. boring_vaughan:/test` will copy all the contents of your dummy folder into the container.
+
+This helps you to add files without restarting the container or rebuilding the image. (this can cause errors). 
+
+The best way is to copy files out of a container(log files etc) this is not error prone.
+
+you can give your own names and tags to easily identify the containers. t**o give your own name to the container you can pass** `**--name name_of_container**` when running the container.
+
+eg: 
+
+```javaScript
+docker run -p 3000:80 -d --rm --name goalsapp 2ddf2ede7d6c
+```
+
+we can use the custom name to access and modify the container. eg: docker stop goalsapp
+
+We can also give custom names and tags to images. **in case of images we have name which is the repository(main group) and tag(specific version) in the format of name:tag.** the name specifies a group for example node. the tag specifies a particular version for example 14\. 
+
+**The name and tag can also be used for dockerhub to get a particular version or configuration of an image eg: node:14 in the docker file to pull node version 14.** The list of possible tags will be available in dockerhub for that particular image. 
+
+This can be done to our own images. we can do this when building the image. syntax:` docker build -t name:tag`
+
+tag can be a word, number or a combination of both
+
+  
+you can run a container based on name:tag combination of the image. 
+
+eg: `docker run -p 3000:80 -d --rm --name goalsapp goals:latest` . 
+
+We can share our images by:
+
+1. Sharing the docker file with the source code. build the docker file locally with the docker build command.
+2. Share a built image: the other user can simply download the image and run a container based on it. we don't need to build the image. we use this for sharing to deplyoment environments.
+
+We can share the images with dockerhub or any third party private registry. Docker hub also have a lot of official images we can use for free.
+
+To get started create a free docker account. click on the repository tab on the navbar. inside this click on create repository. give a name and an optional description to the repository. choose the type of repository. There is no limit for public repository in free account. The public images will be visible to everyone. Only 1 private repository is available for free account. click the create button and the repository is created.
+
+if you want to push images to the dockerhub we need to use `docker push username/repository_name` command. but the local image you created maynot have this name. so when you try to push your image into the repository with this command, it will not work. for this you need to rename the image or you can rebuild the image with the `-t username/repository_name` . or `**use docker tag oldrepo:oldtag username/repository:[optinal tag]**`to retag the image. this will create a clone of the old image. 
+
+Before pushing image into docker hub we need to login to docker account with docker login command.
+
+`**docker login** `will prompt you to enter the username and password. there is also a `docker logout` command. 
+
+after successful login push local image to dockerhub.
+
+eg: `docker push sangeethkumarpg/node-hello:hello-app`
+
+this will not completely push the images but pushes the necessary files in a smart way without wasting much memory.
+
+To pull an image from docker hub we need to use` **docker pull username/respository_name:[tag if any].**`
+
+eg: 
+
+```javaScript
+docker pull sangeethkumarpg/node-hello:hello
+-app
+```
+
+docker pull will always fetch the latest image from the container registry. note that docker run will check for the images that are present locally. but it will not check for updates if you have it locally. if you need the latest image you need to use docker pull first.
+
+Till now we have worked with read only data i.e, the code and files of the image. This is application data.
+
+Then we have temporary data which is created by the application/running containers. such as user inputs, log files etc. These are stored in temporary memory. this type of data is dynamic, but cleared regularly. This is Read+Write. This type of layer is present in the container which wraps the image. 
+
+Then we have permanent data such as user credentials. we are fetching and producing the data is in the container. The data must not be lost even if the container is deleted. This is read+write and must be stored permanently. this is done through volumes.
+
+  
+**Volumes are folders in your host machine that are mapped to your containers.** these folders are mapped to folders inside of the containers. **there is no relation between the Volume and COPY command**. With volume you can connect the folder inside a container to a folder outside of the container. **The changes in either folder will be reflected in the other one**. eg:- if there is a file in the host machine, the file is also accessible by the container. if there is some files in a specified path in the container, they are also accessible by host machine. **The data in the volume will not be removed even when a container is removed. containers can read and write data from and to a volume.** 
+
+We create a volume by using `**VOLUME ["path"]**` in our docker file. eg: `VOLUME ["/app/feedback"]` this is a folder inside the container that should be mapped to some other folder outside of the container. The folder in the host machine is not specified here. here it is controlled by docker. 
+
+`docker logs container-name` will show the log of the container. These volumes cannot be shared with other containers. They cannot be shared across containers of the same image also. 
+
+There are two types of external data storages in docker. Volumes and Bind mounts.
+
+Currently we used anonymous volumes. we can also names to the volumes. In both cases we don't readily know where the data is getting stored in the host machine. We can use the` docker volume ls ` to get the name of the anonymous volume. for anonymous volume docker assigns a name automatically. even when we stop the container or remove it even, the volume still remains(unless we use --rm flag when running the container). A defined path in the container is mapped to the created volume/mount. This path is not accessible by the user and we should not try to access it also. Data stored in named volumes will still be available even when we stop the container. This data can be accessible by new containers that you create. **Named volume is a good place to store data that you want to persist but don't need to edit.** 
+
+To create a named volume we build the image as usual but when running the container we use -v
+
+along with -v we need to pass a name and the path of the folder inside of the container.
+
+i.e, `**-v folder_name_for_host_machine:path/inside/container**` **.**
+
+eg: `docker run -d -p 3000:80 --name feedback-app -v feedback:/app/feedback feedback-app:volume` NOTE that the name provided should be same inside the docker file.
+
+Named volumes are not attached to a container. 
+
+`docker volume prune` will remove any unlinked anonymous volumes, 
+
+```javaScript
+docker volume rm volume_name
+```
+
+will remove the specified named volume. 
+
+Even though the anonymous volumes will persist even after deleting the containers, they are unusable since a new volume will be created when you create a new image.
+
+We only copy the files of the project to the docker container. Subsequent changes we make to the project folder will not be reflected to the container. During development this can cause problem, because everytime we will have to rebuild the image and restart the container for the changes to reflect. This is where bind mounts can help us. Volumes are managed by docker so we don't know where the volume will be placed. **But for bind mounts we set the path to which the data is stored.** We define our own path in the host machine for the bind mounts. **We can put our source code into bind mounts so that the code need not be copied everytime.** The container will have always access to the latest code. **Bind mounts are great for persistent and editable data.** We need to setup the bindmount before we run a container. 
+
+to define a bind mount we specify the -v flag when we run the container. we need to place two -v flags, the first one is similar to that of a named volume. for the second one we need to provide the absolute path to the folder.
+
+eg: `docker run -d -p 3000:80 --rm --name feedback-app -v feedback:/app/feedback -v /Users/Desktop/Development/docker:/app feedback-node:volumes` 
+
+**NOTE : You should wrap your absolute path in double quotes if your path has white spaces or special characters.**
+
+When setting up bind mounts you should make sure that docker has access to the folder.
+
+**after running the above command the app will immediately crash**. This is something that we need to do with bind mounts. Here we are binding everything in our local folder with the app folder. i.e, we are overwriting the folders inside of the container with our local folder. **Our local folder doesn't have node\_modules folder which has all the dependencies that our app needs**. To deeply understand the issue we need to know how the volumes and containers interact with each other. as we have seen that a volume and bind mounts can be connected together. This means that some folders in the container are connected to some folders in the host machine. **If we have some files that are already inside of the container they will also exist in the volume which is outside of the container. If the program in the container create a folder it is replicated in the volume of the host machine. When the container starts up if does not have any files inside it, it will then load the files from the volume.**
+
+That is actually what we utilize with the bind mount. **Here we have files inside of the container(created by instructions in docker file such as npm install) and outside of the container. Docker will not overwrite files in the local machine. Instead the local folder overwrites what is inside of the container, this removes the node\_modules.** This is what is happening here. **_To overcome this we tell docker that there are certain parts of the container which should not be overwritten from the host machine(or outside of the container)._**   **This can be acheived with another anonymous docker volume(volume without name). for this we add a third -v flag with the path of the node modules inside of the container. we can add this inside the docker file also by specifying the VOLUME command. so the command is** 
+
+`**docker run -d -p 3000:80 --name feedback-app -v feedback:/app/feedback -v "/Users/sangeethkumarpg/Desktop/Development/docker/data-volumes-01:/app" -v /app/node_modules feedback-node:volume**`
+
+**This works because docker always evaluates all the volumes you are setting on a container, if there are clashes, the longer internal path wins.** Here we have a volume (bind mount) that is mapped to the /app and another one (anonymous volume) that is mapped to /app/node\_modules. **So docker will choose the more specific path.** Thus the node\_modules folder which is created at the time of image creation will co-exist with the bind-mount in the container. 
+
+**NOTE: the / before the app. it denotes that it is the absolute path. If you don't provide / before the app it will throw an error saying that mount path should be absolute. also note that there is no line breaks between path names.**
+
+In macos when creating bind mounts we need to allow docker to access the file system. for this go to docker settings under resources>file sharing add the specific folder or it's parent folder to the path and save changes.
+
+By adding the bind mount any change we make to the html files inside the node app is reflected immediately. but the changes in the server.js file it will not be reflected. For this we need to restart the container(by stopping and starting again). To fix this we use nodemon npm module. This will automatically restart the server.js whenever there is a change. add this as devDependency to package.json, add script tag and specify start script as nodemon server.js. rebuild the docker image. **To delete a bind mount you will need to delete the folder in the host machine.**
+
+By default bind-mounts are read write. The docker can write to the bind mount. To make sure that only we(the hosting machine) can write into a bind mount we can provide a ":ro" after the container folder name.
+
+eg: `docker run -d --rm -p 3000:80 --name feedback-app -v feedback:/app/feedback -v "/Users/sangeethkumarpg/Desktop/Development/docker/data-volumes-1:/app:ro" -v /app/node_modules feedback-node:volumes ` 
+
+but this might not be something you want such as files that are being written into this folder by the program. for those files we must add additional volumes (anonymous or named volume) ro ensure that those files will be able to write from inside of the container.
+
+i.e, `docker run -d --rm -p 3000:80 --name feedback-app -v feedback:/app/feedback -v "/Users/sangeethkumarpg/Desktop/Development/docker/data-volumes-1:/app:ro" -v /app/node_modules -v /app/temp feedback-node:volumes  
+`
+
+  
+Since this path is more specific it will override the bind mount. **To make sure that the behaviour of bind mount is overwritten we must specify it when running the container and not inside of the docker file.**
+
+`docker volume create volume-name` will create a volume. when running the docker with the -v flag docker will automatically create the volume, so you don't need to manually create the volume with the above command. The `docker volume ls` command will list all the volumes that is managed by docker (named and anonymous volumes). you can remove volumes with `docker volume rm volume-name` command. or `docker volume prune` command. 
+
+You can inspect a volume by using `docker volume inspect volume-name`. when inspecting the volume we can see when the volume was created, the mount point which is the actual path where the volume is created. This is inside the virtual machine which is used by docker so we cannot find this path in our host machine. if it is a readonly volume you will see that under the options key when inspecting the volume. The volumes which have active containers mapped to it cannot be moved unless we stop the running container. When you remove a volume all the data inside it are lost.
+
+Creating the volume with the same name would not bring back the data inside the volume. 
+
+**When we use bind mount we don't need to use copy command inside the docker file to copy data into the container. Bind mounts are used in development environments.** In production the snapshot of our code is exposed as a container, where we don't need the ability to directly edit the source code. 
+
+**we use .dockerignore file to ignore files that need not be copied to the image.** This makes sure that these files are not copied by the copy command in the dockerfile. it is similar to gitignore. you can add any number of files and folders which are not required by the application for the execution.
+
+Docker support built time arguments and runtime environment variables. 
+
+ARG : Allows us to have flexible arguments from the command line. These variables are declared in the docker file. we pass the arguments using --build-arg flag when you run docker build command. 
+
+ENV : Available inside of docker file in application code. You can set them using ENV command in the docker file or --env flag with docker run. 
+
+This helps you to create more flexible containers.
+
+eg: `ENV PORT 80` will set an environment variable with port as 80\. where PORT is the environment variable name. If we want to use an environment variable inside the same docker file we need to add a $ before the variable name. eg: `EXPOSE $PORT` . Inside your application you still need to use the language specific libraries to access the environment variables. This approach does not lock you into using this particular value. in runtime you can update the value of environment variables defined inside of the docker file.
+
+you need to pass `--env variable=value` when running the container will modify the default value of the environment variable. You can add multiple environment variables like this.(But you need to provide multiple --env flags with docker run command). another shortcut is to use --e. 
+
+Another option is to define a .env variable and pass this file name to docker run command using `--env-file filename` 
+
+eg: `docker run --env-file ./.env sample-app` we need to add a ./ before the file name if it is in the same folder as the docker file. The approach of using environment variables as file is the safer approach because once you put your environment variables inside the docker file, if anybody uses `docker history <image>` command on your image they can see the values of the environment variable. So for security purposes give environment variable values inside a seperate .env file and pass it during the runtime. also make sure that you are not sharing the .env file.
+
+Build time arguments lets us plugin values into our docker file or our image at the time of building an image. For example we can use this for setting up the port number. To set up an argument inside the docker file we use the `ARG arg_name [=optional_default_value]` syntax.
+
+eg: `ARG DEFAULT_PORT = 80`
+
+ These variables are not available in your code, They are only available to use inside the docker file. There are also limitation on where you can use it. You cannot use it on commands (CMD) because it is a runtime command which gets executed when the container starts. We can use them on instructions like ENV. eg:
+
+`ENV PORT $DEFAULT_PORT`   
+We don't need to specify the ports when building the docker image because the default is set inside the docker file. But if you need to override the default port you can use them like:
+
+  
+`docker build -t feedback-node:dev --build-arg DEFAULT_PORT=8000 .` 
+
+We specify the arguments using `--build-arg arg_name=value` syntax.
+
+You should note the placement of the arguments in the docker file. Ideally it should be placed after after copying of the code files because whenever a change in the port number occurs docker only need to rebuild the layers after this command. So if it is placed first the subsequent layers such as npm install, copy etc will have to run again and again which is unnecessary.
+
+We may need to communicate with the www to get some data which is obviously outside of the container. Also you might need to communicate with services or databases in the host machine which is also outside of the container. Another possibility is to communicate with another container which runs a service in your machine. Building such application is very common. 
+
+**NOTE: Sending requests to the world wide web works out of the box without any extra configuration.**
+
+If we have a service that is running on the local machine which you want to access from the container. For this type of communication you only need to change the url of the service. Instead of **localhost** we can use **host.docker.internal** . This automatically translates to the ip address of the host machine as seen from inside of the docker container. You can use this anywhere you need a url. 
+
+if you run `docker run mongodb` which is the official name of the docker image in docker hub. It will try to check if the image is found locally. If it not found locally, it will pull the image automatically from docker hub. 
+
+To get the ip address of a container we can inspect the docker container using the  
+` docker container inspect container_id/container_name`   
+When you run this command under the `NetworkSettings` section you can see the `IPAddress` key which is the ip address of the container. You can use this ip address in your code to connect to the container. 
+
+The disadvantage of the above approach is that everytime you restart the container of the service the ip address may change. So everytime you need to manually modify the ip address. 
+
+We can create a network with containers through which containers can talk to each other. Docker will manage the ip addresses of the containers automatically handles the ip lookup. To run a container in network we can use the following command syntax when running the container:
+
+`docker run --name container_name --network network-name image_name`   
+But this command will not work by default as the network will not be automatically created by the docker. for this we need need to create a create a network using `docker network` command.
+
+```javaScript
+connect     Connect a container to a network
+create      Create a network
+disconnect  Disconnect a container from a network
+inspect     Display detailed information on one or more networks
+ls          List networks
+prune       Remove all unused networks
+rm          Remove one or more networks
+```
+
+The above shown as the options for the docker network command.
+
+To create a network we use `docker network create network-name ` syntax. eg:   
+`docker network create favorites-net`   
+To list all the networks we use:  
+`docker network ls`   
+After this we can run the container in this network. For example :  
+` docker run -d --name favorites-db --network favorites-net mongo:latest`   
+**NOTE: Here we are not using the -p tag when running the container because we don't need to access the db from our localhost. The only communication is through container network which is managed by docker without any user configuration.** 
+
+If two containers are in the same network we can use the container names in the url to talk to each other. When using the url we can use :  
+`mongodb://favorites-db:27017/swfavorites` the `favorites-db` is the name of the container which has the mongodb.
+
+To run the app in the same network we can use the same network which has the mongodb. so the command will be like:  
+`docker run -d --name favorites-app --network favorites-net --rm -p 3000:3000 favorites-node`   
+To check the logs of the container we can use:  
+`docker logs favorties-app`   
+We can check if the container is successfully started or not using this.
+
+**NOTE: 2 Containers are not able to talk to each other unless they are in the same network or you manually use the ip address of each container to connect them.**
+
+In container to container communication we don't need to publish the port unless we want it to expose it outside of the container.
