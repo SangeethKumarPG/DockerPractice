@@ -333,4 +333,136 @@ We can check if the container is successfully started or not using this.
 
 **NOTE: 2 Containers are not able to talk to each other unless they are in the same network or you manually use the ip address of each container to connect them.**
 
-In container to container communication we don't need to publish the port unless we want it to expose it outside of the container.
+In container to container communication we don't need to publish the port unless we want it to expose it outside of the container. There are different types drivers in docker. By default when you create a network it uses **bridge** **driver**. Using bridge driver we can communicate with containers in the same network using the container names.   
+**host** : This type of driver is used for standalone containers where the isolation between the host system and the container is removed.   
+**macvlan :** You can set a custom MAC address to a container - this address can then be used for communication with that container  
+**none :** All networking is disabled.  
+To manually specify the driver when creating a network we can use:  
+`docker network create --driver driver_name network_name`  
+**NOTE : In most scenarios bridge driver is suitable.** 
+
+Docker doesn't change the source code to resolve ip addresses. Instead it has access to the environment which the code is placed in. When your code sends an http request, docker resolves the IP address corresponding to the resource in the docker environment.
+
+For this first we need to pull the docker image of mongodb using :  
+`docker run -d --name mongodb --rm mongo:latest`   
+Then create separate docker files for frontend and backend. The backend docker file looks like:
+
+```javaScript
+FROM node
+ 
+WORKDIR /app
+ 
+COPY package.json .
+ 
+RUN npm install
+ 
+COPY . .
+ 
+EXPOSE 80
+ 
+CMD ["node","app.js"]
+```
+
+And the backend file looks like:
+
+```javaScript
+FROM node 
+ 
+WORKDIR /app
+ 
+COPY package.json .
+ 
+RUN npm install 
+ 
+COPY . .
+ 
+EXPOSE 3000
+ 
+CMD ["npm","start"]
+```
+
+After this build images for both the files.
+
+We then need to create a network using the docker network create command like :
+
+`docker network create goals-net`   
+Then first run mongodb container with this network  
+`docker run --name mongodb --rm -d --network goals-net mongo ` 
+
+Then we need to run the backend with the network. But before that we need to update the url in the app.js. We need to replace the host in the url of mongodb connection with the name of the container which is mongodb. After this we need to rebuild the image using:
+
+```javaScript
+docker build -t goals-node .
+```
+
+We need to use this now because we haven't created a bind mount. After building the image run the container with the network.
+
+`docker run --name goals-backend --rm -d --network goals-net goals-node`   
+Similarly for the frontend replace the host with the backend container name and rebuild the image. After this if we run :  
+`docker run --name goals-frontend --rm -d -p 3000:3000 --network goals-net goals-react`   
+This will not work because we will be unable to connect the frontend with backend.
+
+This is because for our node app it is running inside of the container but our react app is running inside of the user's browser. This means that the browser will not be able to translate the hostname of the backend container service. So this means that we need to change the url of our backend service back to localhost. Then we need to publish the port 80 of the backend service. If the port is already used by the system you an change the port like:  
+`docker run --name goals-backend --rm -d -p 90:80 --network goals-net goals-node` 
+
+then build the image and run the frontend container again by publishing the port. the command will be like:  
+`docker run --name goals-frontend --rm -d -p 3000:3000 goals-react `   
+This will publish the react container on port 3000 of localhost, and it will work as expected. This is not an ideal solution because we haven't implemented data persistence, access limiting and live code updates.
+
+To make the data persistent we need to create a volume. Internally the mongodb container stores the data in `/data/db` folder. We need to bind this folder with the local folder of our host machine. If we need to create a bindmount we need to specify   
+`**docker run -v absolute_path_to_host_folder:path_in_container** `   
+**Example:** 
+`docker run --name mongodb --rm -d --network goals-net -v data:/data/db mongo:latest`   
+By doing this our data persists even after the container is restarted because the data will loaded from the data volume if already exists, if not it will create a new volume.
+
+To setup authentication for mongodb we can set environment variables for username and password using the -e flag when running the container. We need to specify `MONGO_INITDB_ROOT_USERNAME=username  
+and  
+MONGO_INITDB_ROOT_PASSWORD=password`   
+example: `docker run --name mongodb --rm -d --network goals-net -v data:/data/db -e MONGO_INITDB_ROOT_USERNAME=sangeeth -e MONGO_INITDB_ROOT_PASSWORD=password mongo:latest`   
+After adding this we need to pass the username and password with the connection string. It should be in a specific format i.e `mongodb://username:password@hostname:27017` .  
+eg: `'mongodb://sangeeth:password@mongodb:27017/course-goals?authSource=admin'`   
+Also note that we need to pass the authSource=admin query param. I**f you created a mongodb container with an image to store data if we add the environment variables we may not be able to connect to mongodb. For that we first need to remove the volume of mongodb and create it again before setting up the environment variables.**
+
+To add live source code updates and persistence for the node application we need to create 2 volumes. 1 for saving the log files, which can be either a bind mount or a named volume. If you want access to log files you can choose bindmounts. For creating a named volume we can use: -v name\_of\_volume:/app/folder\_name.   
+To create bind mounts we need to specify the full path of the folder in the host machine so that it can be binded to the container folder. In our case we want to bind the entire folder of the node app with the container so that any change we make in the files are reflected immediately.   
+We actually need one more volume for the node\_modules because we should tell the container that the existing node\_modules inside of the container should stay there instead of looking for the node\_modules in the local folder. This can be an anonymous volume. 
+
+Before we run the container we need to make sure that the node server is restarted automatically for code updates so for this we use `nodemon` as a `devDependency` in package.json of our backend application. 
+
+```javaScript
+"devDependencies": {
+    "nodemon": "3.1.10"
+  }
+```
+
+To make sure that the nodemon is getting correctly utilized, we can use a start script in the package.json. like:
+
+```javaScript
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start":"nodemon app.js"
+  },:
+```
+
+make sure to update the start script to npm start in the docker file like:  
+`CMD ["npm","start"]`   
+One final improvement on this setup is to avoid the hardcoding of username and password in the js code. To avoid this we can use the ENV command in the docker file to set a default username and password for mongodb. `` `mongodb://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@mongodb:27017/course-goals?authSource=admin`  
+ ``in the js file and 
+
+```javaScript
+ENV MONGODB_USERNAME=root
+ENV MONGODB_PASSWORD=secret
+```
+
+The default value for the environment variable is specified using = in the docker file  
+The final command will be :  
+`docker run --name goals-backend --rm -d -p 90:80 --network goals-net -v /Users/sangeethkumarpg/Desktop/Development/docker/multi-01-starting-setup/backend:/app -v logs:/app/logs -v /app/node_modules -e MONGODB_USERNAME=sangeeth -e MONGODB_PASSWORD=password goals-node`   
+  
+The final step is to add a docker ignore file so that unnecessary files are not copied over to the container. we create a docker ignore file by creating .dockerignore at the root of the project where docker file is also present. once you make changes in the docker ignore you need to rebuild the image.
+
+For the front-end service we just need to create a bind mount for the live code changes. The src folder is only required for the bind mount because most of the changes we do will be inside the src folder where we place our components. So for this when we run the container we put the absolute path of the src folder and bind it to a volume.  
+The command is:  
+`docker run -v /Users/sangeethkumarpg/Desktop/Development/docker/multi-01-starting-setup/frontend/src:/app/src --name goals-frontend --rm -d -p 3000:3000 goals-react`   
+As a final step create a docker ignore file to avoid the copying of node\_modules, .git and dockerfile to the container so that running the container becomes faster.
+
+**NOTE** : The setup till we did now is only for development. this is not suitable for production environments. 
