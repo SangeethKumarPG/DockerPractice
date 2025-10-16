@@ -466,3 +466,271 @@ The command is:
 As a final step create a docker ignore file to avoid the copying of node\_modules, .git and dockerfile to the container so that running the container becomes faster.
 
 **NOTE** : The setup till we did now is only for development. this is not suitable for production environments. 
+
+Till now we created and managed containers with long commands. In that setup we need to manually remove named volumes and networks. **Docker compose is built-in tool in the docker which helps in managing the multi container setup easier.** With just one command we can setup a multi container environment and with just one command we can tear down all the setup.
+
+docker compose let's you replace multiple docker build and docker run commands with just one configuration file and set of orchestration commands to start, stop all the containers at once. Even though docker compose can be used in a single container setup it is more powerful and convenient in multi container setups. NOTE: Docker compose doesn't replace the dockerfiles, instead they work together with the dockerfiles. I also doesn't replace images and containers. It makes working with them easier.  
+Docker compose is not suitable for managing multiple containers in multiple hosts(different machines). Docker compose file consists of services(containers) their configuration such as ports, environment variables, volumes, networks. We can do almost anything we usually do with docker commands in the docker compose file.
+
+The first step is to create a **docker-compose.yaml** file. The first line of the docker compose file is version key where we specify the docker version. **This key is not required in newer versions of docker compose.** After this we specify the services. For services we define children with 2 space indentation. With further indentation we define the configuration of each of the container. For each service again with 2 space indentation we specify the image with a string value. This value can be an image name or a dockerhub url. We don't need to specify the remove flag because docker compose will automatically remove the containers once the services are stopped by docker compose command. To create a volume we specify the volumes we specify volumes as a child to the container. under this we specify each volume with a -.
+
+To specify environment variables there are 2 syntaxes:  
+under the environment key we can specify like:  
+`variable_name: value`
+
+or like:  
+` -variable_name=value`   
+eg:
+
+```javaScript
+  mongodb:
+    image: 'mongo'
+    volumes:
+      - data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: sangeeth
+      MONGO_INITDB_ROOT_PASSWORD: password
+```
+
+If you want to place the sensitive information inside a .env file we need to create a env folder in the same level as the docker compose file. then we use 
+
+```javaScript
+container_name:
+  env_file: 
+    - relative_path_to_the_env_file
+```
+
+**NOTE: The .env file should not contain white spaces except new lines.**  
+example:
+
+```javaScript
+  mongodb:
+    image: 'mongo'
+    volumes:
+      - data:/data/db
+    env_file:
+      - ./env/mongo.env
+```
+
+**NOTE: We use - to specify list of items if we have only single values. If we have key value pair values we don't use -.**
+
+We don't need to create a network when using docker compose because it will automatically create an environment in which all of the containers will be placed. It will by default create a network for us. But if we want we can specify additional networks using the networks key under the service.
+
+```javaScript
+networks:
+  - network_name
+```
+
+example:
+
+```javaScript
+mongodb:
+  networks:
+    - goals-net
+```
+
+If you are using a named volume we must specify them again as in the same level of the services. like:
+
+```javaScript
+volumes:
+  volume_name:
+```
+
+we don't need to specify a value after specifying the volume name.   
+eg:
+
+```javaScript
+volumes:
+  data:
+```
+
+Here data is the name of our volume. By doing this these volumes can be shared by multiple containers. NOTE : Anonymous volumes and bind mounts need not to be specified here. The docker compose file will look like:
+
+```javaScript
+# version is deprecated
+#version: '3.8'
+services:
+  mongodb:
+    image: 'mongo'
+    volumes:
+      - data:/data/db
+    env_file:
+      - ./env/mongo.env
+  #backend:
+  #frontend:
+volumes:
+  data:
+```
+
+The older versions use `docker-compose up` command to start the services. But in newer versions we use `**docker compose up**` without the -. The docker compose up will also pull images from docker hub if the image is not available locally. The docker compose up starts the services in attached mode. If we want we can specify the -d flag to start the services in detached mode like:  
+`docker compose up -d`   
+
+The docker compose down command stops all the containers and remove them.   
+`docker compose down`   
+If you also want to remove the volumes you must specify the -v flag with docker compose down command.  
+`docker compose down -v` 
+
+You can either choose the image which you already built or create a new image from the start. We can do that by using the build argument under the service. We can specify the relative path of the docker file to build the image. The syntax is:
+
+```javaScript
+service:
+  build: relative_path_to_dockerfile
+```
+
+There also another longer form to this:  
+service:
+
+```javaScript
+  build:
+    context: folder_in_which_docker_file_is_present
+    dockerfile: name_of_the_docker_file
+    args:
+      argument_name: value
+```
+
+If you have the dockerfile named as dockerfile itself you don't need to specify the docker file name.   
+To specify ports which you want to expose we use the port key under the service. Then we specify the ports as children of this using single or double quotes. The syntax is like:
+
+```javaScript
+service:
+  port: 'host_port:container_port'
+```
+
+example:
+
+```javaScript
+backend:
+    build: ./backend
+    ports:
+      - '90:80'
+```
+
+When we are setting up bind mounts using the docker run command we needed to specify the absolute path, but when using docker compose we only need to specify the relative path from the docker-compose file. For example:
+
+```javaScript
+    volumes:
+      - logs:/app/logs
+      - ./backend:/app
+```
+
+we want all the files in the backend folder to be a bind mount like this.   
+If we have multiple containers in the docker compose, there might be some containers that depend upon other containers. For this we can specify the depends\_on key. Under this we can specify the list of containers/services. The service will not start unless all the dependent services are up and running. The syntax is:
+
+```javaScript
+  depends_on:
+    - service_name
+```
+
+example:
+
+```javaScript
+    depends_on:
+      - mongodb
+```
+
+So the current dockercompose file looks like:
+
+```javaScript
+# version is deprecated
+#version: '3.8'
+services:
+  mongodb:
+    image: 'mongo'
+    volumes:
+      - data:/data/db
+    env_file:
+      - ./env/mongo.env
+  backend:
+    build: ./backend
+    ports:
+      - '90:80'
+    volumes:
+      - logs:/app/logs
+      - ./backend:/app
+      - /app/node_modules
+    env_file:
+      - ./env/backend.env
+    depends_on:
+      - mongodb
+  #frontend:
+volumes:
+  data:
+  logs:
+```
+
+**NOTE: When check the services we can see that the name of the container/service is a different one. But when we use the container name in the code we can still access them. The service name we specified in the docker compose is designated as the name of the service.**
+
+For the frontend react service most of the steps are essentially the same, we need to build an image from the frontend folder, publish the port in 3000, add bind mount for code changes. Additionally if you want interactive mode you have to add 2 options:
+
+```javaScript
+  stdin_open: true
+  tty: true
+```
+
+These 2 are entirely optional as we may not always need to have an interactive terminal for our container.  
+The frontend depends on backend service, so we need to add depends\_on to this service.
+
+`docker compose down --volumes --remove-orphans  
+`Removes the volumes and their data along with removing the containers. The entire setup of the docker compose file will look like:
+
+```javaScript
+# version is deprecated
+#version: '3.8'
+services:
+  mongodb:
+    image: 'mongo'
+    volumes:
+      - data:/data/db
+    env_file:
+      - ./env/mongo.env
+  backend:
+    build: ./backend
+    ports:
+      - '90:80'
+    volumes:
+      - logs:/app/logs
+      - ./backend:/app
+      - /app/node_modules
+    env_file:
+      - ./env/backend.env
+    depends_on:
+      - mongodb
+  frontend:
+    build: ./frontend
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./frontend/src:/app/src
+    stdin_open: true
+    tty: true
+    depends_on:
+      - backend
+volumes:
+  data:
+  logs:
+```
+
+You can find the information about a particular docker compose command using --help flag. If we use `docker compose up --help`  
+We can see the optional flags that can be used along with the command. One important command is:  
+`docker compose up --build `  
+This command rebuilds the images of the containers. NOTE: This will only rebuild the images we define using the build key of the containers and not the images that we are directly pulling from docker hub(Specified using the image key).  
+If you just want to build the images we can use:  
+`docker compose build `   
+This will only build the images of the services.
+
+The name of the container is taken from the folder name followed by the name you defined in the docker compose file and finally an incremental number starting from 1\. If you want a specific name for your container we can define container\_name key inside the service.
+
+The syntax is :
+
+```javaScript
+  service:
+    container_name: name_you_choose
+```
+
+example:
+
+```javaScript
+mongodb:
+  image: mongo
+  container_name: mongodb
+```
