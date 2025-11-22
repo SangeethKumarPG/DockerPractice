@@ -800,3 +800,394 @@ The syntax is:
 `docker compose run --rm service command`   
 example:  
 `docker compose run --rm npm init` 
+
+Laravel is the most popular php framework. It is great framework but setting it up for the first time is quite complex. It is not a Laravel problem but a php problem. There a quite a lot of dependencies for Laravel. Unlike node.js Laravel does not have a webserver. To get started on node.js we only needed to download node.js which already have the webserver. For the laravel container we will have the following components.   
+1\. Folder in which our application code resides.
+
+2\. A container with php interpreter to execute our code. 
+
+3\. Nginx webserver container which accepts the requests from clients, pass it to the php interpreter for processing, and return the result to the client based on the result from the interpreter. 
+
+4\. MySQL database container which communicates with the php interpreter. 
+
+The 3 containers are application containers, because they will be up and running as long as the application needs to be up and running. Apart from these we also need utility containers. 
+
+Because for our Laravel application we require some additional utilities. We need:
+
+1\. Composer: It is like a package manager for Laravel. It is similar to npm in node. We use composer to create applications. Laravel uses composer to install dependency. 
+
+2\. Laravel artisan: Laravel ships with its own Laravel artisan tool. This is a command which we use to create migrations to our database as well create starting data for our database.
+
+3\. npm: Laravel uses npm for some of its frontend logic. 
+
+For this the first step is to create a docker-compose.yaml file. It will hold all our application containers and utility containers. In the compose file add the server. The image we will use will be nginx:stable-alpine which is lightweight image. We commonly wrap this in quotes to avoid confusion. Then we specify the port. By default, nginx runs on port 80\. So, we need to expose this to our local machine. Also, we need to specify the configuration file for nginx so that it will work as expected. We add this as a bind mount. We bind the configuration file to `/etc/nginx/nginx.conf` folder. This is as per the official nginx image documentation. Since this is a configuration file we have to make it read-only.
+
+```javaScript
+- ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+```
+
+Then in our local machine we create a nginx.conf file inside the nginx folder. The content of the configuration file looks something like:
+
+```javaScript
+server {
+    listen 80;
+    index index.php index.html;
+    server_name localhost;
+    root /var/www/html/public;
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    location ~ \.php$ {
+        try_files $uri =404;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass php:3000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+    }
+}
+```
+
+The compose file will now look like:
+
+```javaScript
+services:
+  server:
+    image: 'nginx:stable-alpine'
+    ports:
+      - '8000:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  # php:
+  # mysql:
+  # composer:
+  # artisan:
+  # npm:
+```
+
+php has an official docker image but we need to extend this image so that we can add some extra extensions for the Laravel to work. We can create a separate folder to store the docker files. The is restriction in adding a name before .dockerfile. We can create something like `php.dockerfile` which is valid. In the docker file we can use the `php:7.4-fpm-alpine` image which is a lightweight image for php 7.4\. We then we need to add 2 additional extension which are pdo and pdo\_mysql extensions. We can install them using `docker-php-ext-install` . The command will look like:
+
+`RUN docker-php-ext-install pdo pdo_mysql` . We must ensure that the above command is executed in the correct directory. For this we need to set the working directory to `/var/www/html` .
+
+If you don't specify an entry point (a default command which runs when the container starts) the entry point of the base image will be used. The docker file will look like:
+
+```javaScript
+FROM php:7.4-fpm-alpine
+ 
+WORKDIR /var/www/html
+ 
+RUN docker-php-ext-install pdo pdo_mysql
+```
+
+Since we have changed the name of the dockerfile we need to explicitly specify the folder and filename, using context and dockerfile commands. It will look like:
+
+```javaScript
+  php:
+    build: 
+      context: ./dockerfiles
+      dockerfile: php.dockerfile
+```
+
+Then the next step is to make sure that the php interpreter has access to our application code. We can place the application code in the src folder of our local machine to /var/www/html folder of the container. We can create a bind mount for that. We can add a` :delegated` tag to the bind mount. This means that the operations that performed on the files will not be instantly reflected in the local machine, it will be done in batches. This is much more performant because there are hardly any changes from the container. The nginx server sends requests to port 3000 of the php container. We had set this in the nginx.conf file. But internally the php container listens to port 9000\. So we need to map port 3000 to port 9000\. 
+
+We don't really need the above because we are not directly interacting with the php container. Since this is container to container communication, we can directly specify the container name with the required port number in the nginx.conf file which is much simpler. For this just change the file like:  
+` fastcgi_pass php:9000;` 
+
+We can pull the official MySQL image from docker hub. To configure the MySQL database, we need to set some environment variables we can either do that in the docker compose file or as a separate .env file. We can specify an environment file using `env_file` option. The file will now look like:
+
+```javaScript
+services:
+  server:
+    image: 'nginx:stable-alpine'
+    ports:
+      - '8000:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  php:
+    build: 
+      context: ./dockerfiles
+      dockerfile: php.dockerfile
+    volumes:
+      - ./src:/var/www/html:delegated
+  mysql:
+    image: mysql:5.7
+    env_file:
+      - ./env/mysql.env
+  # composer:
+  # artisan:
+  # npm:
+ 
+```
+
+To set up a laravel project we need composer. For this we can use a custom docker file. Inside this we can use the composer image, specify the working directory as` /var/www/html `and specify the entry point. The `ENTRYPOINT `command should run the `composer `command with `--ignore-platform-reqs `flag to ignore any dependency issues. The docker file will look like:
+
+```javaScript
+FROM composer:latest
+ 
+WORKDIR /var/www/html
+ 
+ENTRYPOINT ["composer","--ignore-platform-reqs"]
+```
+
+After the above step specify the build for the composer in the docker compose file. Then we need to connect the source folder of the code so that composer can access this. We can create a bind mount for this.
+
+The docker compose file will now look like:
+
+```javaScript
+services:
+  server:
+    image: 'nginx:stable-alpine'
+    ports:
+      - '8000:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  php:
+    build: 
+      context: ./dockerfiles
+      dockerfile: php.dockerfile
+    volumes:
+      - ./src:/var/www/html:delegated
+  mysql:
+    image: mysql:5.7
+    env_file:
+      - ./env/mysql.env
+  composer:
+    build: 
+      context: ./dockerfiles
+      dockerfile: composer.dockerfile
+    volumes:
+      - ./src:/var/www/html
+  # artisan:
+  # npm:
+```
+
+To create a laravel project we can find the command to create project in the laravel documentation. We can run only the composer container with this command to create the project. The command for this will look like:
+
+`docker compose run --rm composer create-project --prefer-dist laravel/laravel .` 
+
+Once the laravel project is created with the above command we need to tweak the values in the generated .env file so that we can connect to our MySQL database. like:
+
+```javaScript
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=homestead
+DB_USERNAME=homestead
+DB_PASSWORD=secret
+```
+
+In our current setup we are not exposing the files to nginx server. So, for this we can add another volume to the nginx container and connect the `src` folder with the `/var/www/html` folder. After this if we just run `docker compose up` it will run all the services including the composer service which we do not want. Instead, we can target specific services which we can run by specifying the service name with the docker compose up command. Before we run we need to make one small adjustment to the the server container. We need to adjust the path of nginx configuration file like:
+
+```javaScript
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+```
+
+After this we can run `docker compose up -d server php mysql` 
+
+If a service depends upon on 2 or more other services we can use the **depends\_on** tag with that service. By doing this when we start that service the dependent services are automatically started.
+
+If we want docker to re-evaluate the docker files every time you run docker compose we can use` --build `flag with docker compose up. Example:
+
+`docker compose up -d --build server` 
+
+If there are no changes in the images and docker files it will not re-evaluate the images. It will use the cached images.
+
+In case if you get an error like Base table or view not found: 1146 Table 'homestead.sessions' doesn't exist. You need to manually create a new migration by entering into the php container in interactive mode by using the docker exec -it command. Then inside the container run `php artisan make:migration create_sessions_table --table=sessions  
+`Then open the migration file in database/migrations. Then insert the below code:
+
+  
+```javaScript
+<?php
+ 
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+ 
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->text('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+ 
+    public function down(): void
+    {
+        Schema::dropIfExists('sessions');
+    }
+};
+```
+
+Then run the migration using `php artisan migrate` . Then open the mysql container in interactive mode, login to the database and use the database you have specified in the env file. Check if session table already exists using:
+
+`SHOW TABLES LIKE 'sessions';`
+
+Then insert the migration manually using:
+
+```javaScript
+INSERT INTO migrations (migration, batch)
+VALUES ('2025_11_20_115358_create_sessions_table', 1);
+```
+
+Replace the name of the migration with the name of the actual file.
+
+When you stop the containers and run again it again you might need to open the php container in interactive mode using `docker exec -it container_id sh` . Then run `php artisan migrate`.
+
+artisan is tool in laravel which helps with configuration. We can use the php docker file for artisan also. Because it needs php to execute. We also need a volume because the artisan tool runs on the code. We can override commands defined in the docker file with in docker compose file. For example we can add an **entrypoint** command for artisan. By doing this we can correctly configure artisan. We can do the same step for npm as well but we will use the node image, and map the working directory, add the bindmount and specify the entrypoint. After running the docker compose file we can use:
+
+`docker compose run --rm artisan migrate` . To run the migrations. The complete docker file will look like:
+
+```javaScript
+services:
+  server:
+    image: 'nginx:stable-alpine'
+    ports:
+      - '8000:80'
+    volumes:
+      - ./src:/var/www/html
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - php
+      - mysql
+ 
+ 
+```
+
+```javaScript
+ php:
+    build:
+      context: .
+      dockerfile: dockerfiles/php.dockerfile
+    volumes:
+      - ./src:/var/www/html:delegated
+  mysql:
+    image: mysql:5.7
+    env_file:
+      - ./env/mysql.env
+  composer:
+    build:
+      context: .
+      dockerfile: dockerfiles/composer.dockerfile
+    volumes:
+      - ./src:/var/www/html
+  artisan:
+    build:
+      context: .
+      dockerfile: dockerfiles/php.dockerfile
+    volumes:
+      - ./src:/var/www/html
+    entrypoint: [ "php", "/var/www/html/artisan" ]
+  npm:
+    image: node:14
+    working_dir: /var/www/html
+    entrypoint: [ "npm" ]
+    volumes:
+      - ./src:/var/www/html
+```
+
+You cannot use **COPY** or **RUN** commands inside docker compose file. You will need a docker file for that. Bind mount cannot be used in deployment environment. Bind mounts are only useful to make development easier by mirroring the local folder into volume. For this above case we can use a docker file and copy over the snapshot of the code and configuration files so that later we can deploy the application with all the necessary files. The docker file will look like:
+
+```javaScript
+FROM nginx:stable-alpine
+ 
+WORKDIR /etc/nginx/conf.d
+ 
+COPY nginx/nginx.conf .
+ 
+RUN mv nginx.conf default.conf
+ 
+WORKDIR /var/www/html
+ 
+COPY src .
+```
+
+This docker file will copy the configuration files for the nginx and the source code inside of the container.
+
+After creating the docker file change the build and context of the server service in the docker compose file. If you need something to be copied from your host machine setting the context to any child folder will not work. We must set the context to . Like:
+
+```javaScript
+ server:
+    build:
+      context: .
+      dockerfile: dockerfiles/nginx.dockerfile
+```
+
+We can then safely comment out the bind mounts of the server service since we have already copied over the files to the container.   
+We can then do the same thing for the php service because we are using bind mounts. We can edit the php docker file to copy over the files from src folder to the working directory of the php container.
+
+The php docker file now will look like:
+
+```javaScript
+FROM php:8.2.4-fpm-alpine
+ 
+WORKDIR /var/www/html
+ 
+COPY src .
+ 
+RUN docker-php-ext-install pdo pdo_mysql
+ 
+RUN addgroup -g 1000 laravel && adduser -G laravel -g laravel -s /bin/sh -D laravel
+ 
+RUN chown -R laravel:laravel /var/www/html
+ 
+USER laravel
+```
+
+The RUN command is used to set permissions for the linux so that data can be copied to the container. The default user of php fpm service is www-data we can create a new user called laravel, so we need to give read permission to read and write data to the container(gives ownership to the laravel user). After this we can comment out the bind mount of php service also. Then if we run the docker compose command with build flag we can see the landing page of laravel which works fine. We can uncomment the bind mounts and use it fine for development mode also.
+
+The complete docker compose file will now look like:
+
+```javaScript
+services:
+  server:
+    build:
+      context: .
+      dockerfile: dockerfiles/nginx.dockerfile
+    ports:
+      - '8000:80'
+    volumes:
+      - ./src:/var/www/html
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - php
+      - mysql
+  php:
+    build:
+      context: .
+      dockerfile: dockerfiles/php.dockerfile
+    volumes:
+      - ./src:/var/www/html:delegated
+  mysql:
+    image: mysql:5.7
+    env_file:
+      - ./env/mysql.env
+  composer:
+    build:
+      context: .
+      dockerfile: dockerfiles/composer.dockerfile
+    volumes:
+      - ./src:/var/www/html
+```
+
+```javaScript
+  artisan:
+    build:
+      context: .
+      dockerfile: dockerfiles/php.dockerfile
+    volumes:
+      - ./src:/var/www/html
+    entrypoint: [ "php", "/var/www/html/artisan" ]
+  npm:
+    image: node:14
+    working_dir: /var/www/html
+    entrypoint: [ "npm" ]
+    volumes:
+      - ./src:/var/www/html
+```
