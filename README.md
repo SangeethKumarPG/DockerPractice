@@ -1336,27 +1336,37 @@ It will perform the code compilation and optimizations and we can serve these op
 We can create separate docker files for development and production. We can create docker files like: `Dockerfile.prod` which is perfectly valid. The dockerfile will look like:
 
 ```javaScript
-
+FROM node:14-alpine
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY . .
+CMD["npm","run","build"]
 ```
 
 The above script is enough to build the application but it is not enough to deploy it. To tackle this we can use multi stage builds.
 
 Multistage builds allow you to have one dockerfile but define multiple build steps inside of that file. Stages can copy results from each other(created files and folders). You can either build the complete image or selected individual stages upto which you want to build and skipping all stages there after. This is called multi stage builds. So the above mentioned docker file can be modified by using the RUN command instead of the CMD command. Like:
 
-```javaScript
-
-```
+`RUN npm run build`
 
 After this command we need to switch to a different base image, because we only need node to build the optimized files. After build we will get regular html, css and js files. We can use nginx which is a very light weight webserver. **Every FROM instruction will create a new stage in your docker file even if you are using the same image as in the previous step.** We also don't want to discard the changes from the previous step. So we can give a name of our choice to the first step using the `as `keyword. eg:
 
-```javaScript
-
-```
+`FROM node:14-alpine as build`
 
 Then in our second stage we can copy from the first stage using the special syntax `--from=stage_name` with the `COPY `instruction. After this we need to add a space and provide the source path from the file system in the build stage and the destination path. After building the react project the files are stored inside of the build folder so we can specify the path. The destination path for nginx is `/usr/share/nginx/html` , this is the default folder for nginx to serve files. This is listed in the official dockerhub nginx documentation. You can have as many stages as we want for a dockerfile. Then we need to expose the port of nginx. Finally we need to use the command to start the nginx server using `CMD ["nginx","-g","daemon off;"]` The complete docker file will look like:
 
 ```javaScript
-
+FROM node:14-alpine as build
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY . .
+RUN npm run build
+FROM nginx:stable-alpine
+COPY --from=build /app/build /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx","-g","daemon off;"]
 ```
 
 After this we need to make adjustments to out application, in our application we are using the localhost to access the backend api. Since we will deploy the frontend in the same task as the backend and the same frontend will be accessible through the same domain name as the backend we can skip the use of localhost in the backend calling url. Because the frontend code is running the users browser and the browser will automatically add the domain name before the requested path in the request. We can also use environment variables to use different URL's for production and development. 
@@ -1377,8 +1387,6 @@ We can then create a new service based on the task, choose fargate as launch typ
 
 We can run builds of a single stage of a multi stage docker file by using the `--target stage_name`parameter with the docker build command. In our above case we can use:
 
-```javaScript
-
-```
+`docker build --target build -f frontent/Dockerfile.prod ./frontend`
 
   
