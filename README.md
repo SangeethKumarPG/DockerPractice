@@ -1,4 +1,3 @@
-# Docker
 A Docker file is used to create a template for the image. For this we create a Dockerfile in the particular folder of our project. inside this we need to specify a base image. this base image maybe an image present in the docker hub or something that is cached locally(if you have used docker pull). we use the FROM <image-name> for this. then we specify a working directory if we need one. we use WORKDIR <path> to specify this. Then we have to copy the files to the working directory. all the commands are being run in the working directory. so once working directory is specified we can easily run the required commands on the working directory. 
 
 COPY <source> <destination> command is used to copy files from a source folder in the image to the destination folder in the image. '.' specifies the root folder. To run commands in the docker image i.e commands to setup the environment we use the RUN command. to execute or run certain things inside the container once the image is ready we use CMD command. the syntax is CMD\['command','seperated","by","comma","and","doublequotes"\]. the spaces are seperated by comma and commands are wrapped in double quotes. and everything is enclosed in \[\] brackets.
@@ -1191,3 +1190,195 @@ services:
     volumes:
       - ./src:/var/www/html
 ```
+
+Docker and containers lets us have same environments for development and production, thus ensuring that it works as expected. It also avoids the use of installing tools on the local machine. We can install the dependencies in the container which can be also used in the production environment containers. It also avoid unexpected errors when moving to production environments. Also we have to watch out for certain things when moving to production environment such as:
+
+1\. We will not use bind mounts in the production environment.
+
+2\. We may need to follow certain additional steps when moving to production, for example for react application we might need to use build command which optimizes the application for production.
+
+3\. Multi container projects might need to be split across multiple hosts or remote machines. 
+
+4\. Trade off between control and responsibility such as configuring an environment for production by yourself and using a managed environment.
+
+In AWS we need to create an EC2 instance along with a VPC and a security group. Then we need configure the security groups to expose all the required ports to world wide web. We need to connect to this instance with SSH and install docker and run the docker container.
+
+**NOTE**: During the development the containers should encapsulate the environment but not necessarily the code. We used bind mounts so that the we don't need to rebuild the image every time when there is a change in the code. But in production mode the container should be standalone, you should not have any source code in your remote machine. The image/container should be the single source of truth. We also must not move the code to the remote machines. That will destroy the idea of containers. We use COPY command instead of bind mount which copies the source code into the container. This ensure that every image runs without any extra surrounding configuration or code no matter where you run it.
+
+To create a new EC2 instance login to aws management console, then search for EC2\. You will see an option to launch an instance. Once you click launch you will see the options to configure the machine. You can choose the instance type, operating system and leave the defaults for VPC and security group. Then click on the launch instance button. You will ne asked to create a key. Give a name to this key. And choose the encryption algorithm. This will download the key file so that we can use this to login to the instance. After downloading the key go to terminal in case of linux and run `chmod 400 "keyfile-name.pem"` To make sure that it is not publicly writable.
+
+This can be skipped in windows. Then make sure that you are in the same folder as the key file inside the terminal. Then run :
+
+`ssh -i "example-1.pem" ec2-user@ec2-98-130-60-223.ap-south-2.compute.amazonaws.com` 
+
+A command like this will be shown when you click the connect option with the steps. 
+
+Type yes to accept the fingerprint and you will be connected to the instance. After this we need to install docker. We can use the following commands:
+
+```javaScript
+sudo yum update -y
+ 
+sudo yum -y install docker
+ 
+sudo service docker start
+ 
+sudo usermod -a -G docker ec2-user
+```
+
+After this logout and login again. Then run :
+
+`sudo systemctl enable docker`   
+Then you can check the docker version using `docker version` command.
+
+We can either move the source code with the dockerfile into the remote machine and build the image there or we can build the image locally and move the image into the remote server. The first option has a lot of unnecessary steps and complexity. For pushing the image to docker hub. First build the image. Before building add a dockerignore file to ignore dockerfile and node\_modules. After building the image we can retag the image using the docker tag command. We need to retag the image in a format that is suitable for dockerhub. i.e,
+
+`docker tag image-name dockerhub_username/repository_name`   
+For example:
+
+` docker tag node-deployment-example-1 pgsangeethkumar/node-example-1` 
+
+This will create a new image with the provided tag. Now you will be able to see 2 images when you run docker images command.
+
+This tagging allows us to push the image to docker hub. To push the image we use:
+
+`docker push username/repository_name `   
+Which is essentially the tag we added.  
+Eg:  
+`docker push pgsangeethkumar/node-example-1`   
+You need to login to docker hub before pushing. To login use docker login command and enter the username and password. 
+
+To run the image inside of a container in the remote machine we need to use:   
+`docker run -d --rm username/repository_name`   
+So the command for the above example would be:
+
+`docker run -d --rm -p 80:80 pgsangeethkumar/node-example-1`   
+here we are exposing the port 80 of the container. 
+
+Even thought the above step runs the container we will not be able to access our application by visiting the public ip of the server because of the security group configuration. The inbound rule of the default security group is configured such that it only accepts traffic through port 22\. This is used for SSH. To add an inbound rule click on the EC2 instance, under the bottom bar inside security you can see the security group of inbound rule. Click on the security group. This will show the security group. Select the security group which will show the existing inbound rules. click on edit inbound rules. A new tab will be opened where you can see the existing rules. Click on add rule, choose HTTP since we are using http requests. If required you can use https also from the dropdown. Choosing the http will by default select port 80\. We can edit that if we want. You can choose the source to anywhere ipv4 since we want to access this from the internet.
+
+After configuring the security group we will be able to access the application by using the public ipv4 address.
+
+With our current setup we can make the changes locally and build the image and push it to dockerhub. Then we can pull the image inside of the EC2 instance and run it. We use the following commands :
+
+```javaScript
+docker build -t node-deployment-example-1
+docker build -t node-deployment-example-1 .
+docker tag node-deployment-example-1 pgsangeethkumar/node-example-1
+docker push pgsangeethkumar/node-example-1
+```
+
+Then we need to login to the EC2 instance and use:
+
+`docker pull pgsangeethkumar/node-example-1:latest`   
+To pull the image. Then re running the image:
+
+`sudo docker run -d --rm -p 80:80 pgsangeethkumar/node-example-1:latest`   
+Our current approach has a couple of disadvantages.
+
+With our current approach we need to do everything manually like creating our instance, configuring security groups etc. We are fully responsible for the server. SSHing to the remote machine and managing it is annoying. We also need to monitor them ourself and scale them manually by ourself.
+
+We can use a managed service like amazon ECS which is **Elastic Container Service**. It is a service that help with running containers by automatically managing and monitoring them. Other cloud providers has similar container hosting services. The advantage of using such a service is that the creating, updating, monitoring and scaling is simplified. This is great if you simply want to deploy a container and run the applications. When we are using a managed service we should follow the rules of the service provider. To work with these containers each provider will provide a different set of rules which we need to use. The tools may differ based on the cloud provider.
+
+AWS ECS thinks in 4 categories:
+
+**1 Containers**: Contains the code and dependencies bundled into a single unit. We can pull the container from docker hub by providing the URI. In the express mode we will get options similar to that of the docker run command. Such adding environment variables, managing ports etc. Additionally we can set up logging and monitoring. 
+
+**2\. Tasks**: Is the blueprint for your application. It tells ECS on how the server configured with docker run should run. A task can include more than 1 container. You can think of a single task as a single remote server which runs one or more containers. By default we are using FARGATE. Fargate is a specific way of launching your container which launches your container in serverless mode. This way aws will store the containers and the configuration in the cloud. When the task is to be executed it will start the container and perform the task and stop the containers. You can also use EC2 instead of fargate. 
+
+This way a new EC2 instance will be created instead. Using fargate is cost effective because we will be paying only for the time that the container is executing. We don't need to pay for idle time.   
+**3\. Services**: Service controls how the task should be executed. Here we can add load balancer and it manages all the heavy lifting of redirecting the requests to the running containers behind the scenes. Every task is executed by a service. You will have 1 service per task. 
+
+**4 Clusters**: It is the overall network where the services run. If you have a multi container app you could group multiple containers into one cluster. This makes them logically tied together and all of them can talk to each other. 
+
+We can choose the memory and cpu required for fargate. If you choose a higher configuration it will be relatively more expensive. If you choose a smaller configuration, when a large number of requests comes it will not be enough. AWS also offers auto scaling where it would actually create more than 1 running container handling the requests. You can use autoscaling when you want to handle more workload. 
+
+To update a container we can make the changes locally build the image, tag it and push it to docker hub. AWS ECS cannot automatically update the image, we need to navigate to clusters>defaults>tasks>task definition of the running task> create new revision. Here we should leave all other settings as is. We just want to create the same task again, this way ECS will automatically pull the updated image. When you create a task and start the service in that task aws will automatically use the latest image version. Then click on actions button>update service. This will pull the latest image and restart the service in the task. Alternatively we can click on the update service and select force new deployment where we don't need to create a new task revision. We can see the application running by visiting the public ip address which is available by default. AWS will create a new public ip for every task(including revision of existing tasks). 
+
+Docker compose is not a good option for production applications where we have multiple services. We also need to make consideration for a whole another set of parameters when we deploy the application to production. It is heavily dependent on the hosting provider we are using which requires some extra information which are not part of the compose file. Though docker compose is a good choice for running multiple containers locally. But as soon as moving to cloud where multiple different machines working together it reaches it's limit. We can manually deploy the services to ECS based on the docker compose file(without actually using the docker compose file). We need to manually create the image for each of the services. In ECS we cannot use the name of the container for connecting it with another container because the docker networks are not present here. Our code may not necessarily run inside of a single server due to this we cannot use the name of the containers. 
+
+There is also an exception. If your containers are added in the same task in AWS ECS, then they are guaranteed to run in the same machine, still ECS will not create a docker network, instead it allows you to use localhost as an address in your container application code. 
+
+We can create a cluster to run the backend container, for that we can create a networking only cluster. We can check the option to create a VPC and keep all the rest as defaults. This will create a cluster and the cluster is just the surrounding network for your containers. After the cluster is created we can click on view cluster. Here in the tasks tab we can add the tasks and services. Since services are based on tasks we need to create a task first. We do this under task defenitions. We can create a new task definition and user AWS fargate to have a serverless container environment. Give the task a name, on the role we should have an ecs task execution role available by default, if not you should delete the entire cluster again. Choose the required memory and cpu, on container definitions add container. Give the dockerhub repository name to the image name. Provide the port exposed by the containerized application. We should add the environment variables used by the container. 
+
+We can override the run command here, in our container we had` nodmon index,js` to run the application, but we can override that to user node `index.js`. We can specify that by adding comma instead of space. This allows us to finetune the container runtime based on the environment we are running whether it is development or production. There is no concept of network in ecs. So we cannot directly specify the name of the container to communicate with it. But there is an alternative feature in aws, when we add multiple containers to the same task then these containers can communicate each other using the localhost key. Basically it emulates a local system. After this we can click create which will create our first container. We also had the mongodb container for this application. So we can use add container option to simply add another container. Give the container a name and provide the image name of the official mongo image. Map the default port of mongodb. 
+
+For the backend we used bind mounts. In production we don't use them, so we ignored it. For the mongodb we need a volume because it is where the data is stored. For now add this as empty and add the container. This will now create our new task definition with our 2 containers inside it. Now we can launch a service based on this task with the defined configuration. For this click on the create option under services, choose fargate as launch type, choose the task definition, give service a name, specify the number of tasks as 1, after this create on the next step option. This page shows the network setup, choose the vpc which you had chosen when you initially created the cluster. Under the subnets add both the subnets. Enable auto assign public ip. Then for load balancing choose application load balancer. This will help in optimizing the network traffic and it also helps in adding a custom domain name if we want.
+
+ If you don't have a load balancer we can create an application load balancer and give it any name of our choice. Make sure that internet facing is enabled so that it can be reached from the internet. Use port 80 as port of load balancer. You should use the same vpc which we used for our cluster. Next configure the security settings of the load balancer. If we want we can enable only https, but here we don't need that. In the next step configure the security group, choose the security group of the service. Next we need to configure routing, give it any name of your choice. Choose IP as the target type, this is required since we are using fargate. After this click on register targets. We don't need to specify anything here AWS will automatically add the running container here. So click on review button to review the settings and click on create to create the load balancer. After this in the configuration of networks choose the created load balancer. 
+
+Choose the container port mapping to the load balancer. Choose the target group after this choose the next option, on this page you will be asked to setup auto scaling. Autoscaling is what enables the automatic creation of new containers simultaneously to handle the incoming request volume spikes. Choose create service, and after this the service will be available. On the service page we can click on the tasks page and we can we can view the status of the containers which are being created. We can use the public ip of the network to access the application. 
+
+We can go to application Load balancer page either by searching or going to the EC2 page under which load balancers are present. Load balancer is responsible for checking the health of the containers and restart them if they are not healthy(if they are not responding). This is generally a good behavior because when our application crashes it will be restarted. In the configuration we should specify the correct path (endpoint) of our application so that it will get an output and load balancer verifies that the application is healthy. If this path is not correct, when you use the dns name of the load balancer to visit the website it will not work. If you made any mistake in this we can edit the load balancer settings and update the health checks path.
+
+When using the dns name of the load balancer we don't need to worry about the automatically changing ip addresses. If we want we can define our custom domain name, check the AWS documentation for this.
+
+To update the code changes, we can push the the image to dockerhub and then go to the service page and click on the service, click on update and click on force new deployment, click on review and click on update service. This will restart the service based on the updated container images. The old one will keep running until the new one is deployed and up and running. The old one will automatically get shut down and removed.
+
+We can also create a volume in ECS, for this click on task definitions and click on the latest task definition which you find then click on create new revision to create a new configuration based on the previous one. Here we can review the configuration of the tasks and we can add a volume here to make the data in the db persist. Choose a name for the volume choose EFS(Elastic file system). EFS is a service offered by aws to attach a file system to our serverless container. This way data will remain even if the containers are redeployed. Since there is no file system initially we need to go to the amazon EFS page to create a new file system. Click the option to create a file system, give it any name of your choice, choose the VPC which we used for ECS. Then click on customize where we need to customize one setting. In the first page that comes up click on continue. Then in the next page we will the network access settings. 
+
+We need to create a new security group which we can create by going to the EC2 page and clicking on the security group name. Give the security group a name. Add the security group to the VPC. Then add the inbound rule, choose NFS from the drop down, choose the security group of the containers which lets the containers communicate with the services used in the group. The port and protocol is automatically selected by default and we cannot change it. Without adding this security group and inbound rule the containers and the tasks in ECS would not be able to talk to the EFS. Click create security group. After creating this go back to the EFS configuration page and choose this instead of the default one. After this click next and click on the confirmation and click on create, this will create the file system. Choose the newly created file system in the filesystem id field. We can set an access point if we want which allows us to target some nested path inside of the file system. 
+
+If you have multiple volumes and you don't want to create multiple file systems you can have nested folders on the same file system for the different volumes. But we can now ignore this. If we click on add we will define the volume for the container. This is like adding volumes at the end of docker compose file, this is not the only thing we want to do to connect with the container. We need to click on the container and edit the configuration of the container. We need to go to the storage and logging section and for the mount point choose the volume that we created. The bind it to the path inside of the container where data needs to be stored which we used inside of the docker compose file. After this click update. After this click on create to create a new task revision, go to actions, click on update service, choose redeployment of the service with the new revision, you should also choose the platform version (which ever is the latest). Click review and then click on update.
+
+We can create and manage our own database containers if we want like we did above, but there are couple of issues with this:
+
+* Scaling and managing availability can be challenging. We need to be prepared for multiple read/write operations to occur simultaneously. So we might need to have multiple containers with the same configuration and working on same data base files up and running simultaneously. We need to ensure that these database containers will work on the same database so they are synchronized across each other, which another database does not know. So scaling means more than running 2 containers simultaneously.
+* Problems with performance during traffic spikes, if we don't have scaling and if we only have 1 container to do all the work.
+* Backups and security, we need to ensure that the data is secured and cannot be accessed without our permission. We need to ensure that data is backed up regularly so we can rollback easily.  
+These things don't matter in our local machines.
+
+It is a good idea to use a managed database service, for relational databases there is AWS RDS, for NoSQL there is mongodb atlas. The managed service takes care about all the above issues for you. 
+
+After using the mongodb atlas we need to deploy a container for the react single page application. These kind of application requires a build step. This simply means that we run code in development which is not the code we will deploy later. Because it will be transformed and optimized. This is the case for web applications that run in the browser. The development and production steps are different. We cannot fix this with docker alone. The code we write in react is not natively supported by the browser(JSX code). This code is compiled when during development and it is slower. When we previously ran the react application we use the npm start command which runs the application in development mode which runs the application in the development server. But in production we can't use this. React has it's own build script which will run when you use `npm build` command. 
+
+It will perform the code compilation and optimizations and we can serve these optimized files ourselves with the help of any webserver of our choice. 
+
+We can create separate docker files for development and production. We can create docker files like: `Dockerfile.prod` which is perfectly valid. The dockerfile will look like:
+
+```javaScript
+
+```
+
+The above script is enough to build the application but it is not enough to deploy it. To tackle this we can use multi stage builds.
+
+Multistage builds allow you to have one dockerfile but define multiple build steps inside of that file. Stages can copy results from each other(created files and folders). You can either build the complete image or selected individual stages upto which you want to build and skipping all stages there after. This is called multi stage builds. So the above mentioned docker file can be modified by using the RUN command instead of the CMD command. Like:
+
+```javaScript
+
+```
+
+After this command we need to switch to a different base image, because we only need node to build the optimized files. After build we will get regular html, css and js files. We can use nginx which is a very light weight webserver. **Every FROM instruction will create a new stage in your docker file even if you are using the same image as in the previous step.** We also don't want to discard the changes from the previous step. So we can give a name of our choice to the first step using the `as `keyword. eg:
+
+```javaScript
+
+```
+
+Then in our second stage we can copy from the first stage using the special syntax `--from=stage_name` with the `COPY `instruction. After this we need to add a space and provide the source path from the file system in the build stage and the destination path. After building the react project the files are stored inside of the build folder so we can specify the path. The destination path for nginx is `/usr/share/nginx/html` , this is the default folder for nginx to serve files. This is listed in the official dockerhub nginx documentation. You can have as many stages as we want for a dockerfile. Then we need to expose the port of nginx. Finally we need to use the command to start the nginx server using `CMD ["nginx","-g","daemon off;"]` The complete docker file will look like:
+
+```javaScript
+
+```
+
+After this we need to make adjustments to out application, in our application we are using the localhost to access the backend api. Since we will deploy the frontend in the same task as the backend and the same frontend will be accessible through the same domain name as the backend we can skip the use of localhost in the backend calling url. Because the frontend code is running the users browser and the browser will automatically add the domain name before the requested path in the request. We can also use environment variables to use different URL's for production and development. 
+
+We can use the -f flag to specify the dockerfile name to build the image. Eg:  
+`docker build -f frontend/Dockerfile.prod ./frontend` 
+
+We need to specify the full path of the dockerfile. 
+
+To deploy this we can go back to the cluster we had created and inside of the task definition and go to the latest task revision and create a new task revision. In the container definitions part click on add container. Give it a name provide the dockerhub repository image, map the port 80\. We can skip the following health check and environment variables section. We can utilize the startup dependency ordering. We can select our backend service and choose the success option to ensure that only after the successful starting of the backed we will start the frontend container. Since we don't need anything else we can skip the following steps and click on add to add the container. We cannot map 2 containers to same port 80, this will cause a problem and we will not be able to create the task revision. You can technically change the ports of backend or frontend to make sure that it works. You cannot have 2 webservers on the same host. We have an nginx server and node server here. 
+
+We can skip the above approach and create a new task definition and use fargate. Give the task definition a name, choose the same task role we used for backend and provide the minimum required hardware configuration. Then click on add container and provide a container name, choose the dockerhub image. Map port 80\. Since this is a new task it will have it's own url. We can skip the remaining settings and create add. Then create the task definition.
+
+Since the frontend and backend are now in different tasks they will be created in 2 different services. The `process.env.NODE_ENV` holds identifies the environment. When you run the npm start command it will be development, if we run npm run build it will be production in a react application. Based on this we can set the url of the backend. We can also create a new load balancer for the front end application. For this go to EC2 page and click on load balancers, click on create load balancer, give it a name, and ensure that it is internet facing. Choose the port which you want to expose, choose the same vpc as the other load balancer we created earlier for the backend. Then use the same security group for the frontend (since this security group allows all traffic through port 80 only). Then create a target group, give it a name, choose target type as IP, provide the health check path as default because we will access our application from the root path.
+
+Review the settings and create the load balancer. We can check the DNS name of the load balancer which will become the url through which we can access our application. We should also take the DNS name of the backend load balancer so that we can use this inside of our front end application. After adding the url we can build the image and redeploy it to dockerhub.   
+We can then create a new service based on the task, choose fargate as launch type, use the cluster name we created, provide a name to the service, set the number of tasks to 1, choose rolling updates. In the next page we need to add the 2 subnets that our vpc provides. For security groups we can choose the same security group of load balancer that we created earlier. For load balancing choose application load balancer, choose the load balancer we created and click on add. Choose the target group name leave all the other settings as is. Click on next and then click on create service. 
+
+We can run builds of a single stage of a multi stage docker file by using the `--target stage_name`parameter with the docker build command. In our above case we can use:
+
+```javaScript
+
+```
+
+  
