@@ -1391,3 +1391,511 @@ We can run builds of a single stage of a multi stage docker file by using the `-
 `docker build --target build -f frontent/Dockerfile.prod ./frontend`
 
   
+Core docker commands:  
+1\. `docker build -t NAME:TAG . `: Used to build images. We can specify the name and version of the image as tags. The `.` indicates the build context. If you are running the docker build command in the same folder as the docker we use this otherwise we can use the path.
+
+2\. `docker run --name NAME --rm -d IMAGE` : Used to run a container. The `--rm` flag is used to remove the container once it is stopped. `-d` makes the container run in detached mode so that our terminal is not blocked. 
+
+3\. `docker push REPOSITORY/NAME:TAG` : To push an image to a container registry, by default dockerhub is used.
+
+4\. `docker pull REPOSITORY/NAME:TAG` : Used to pull images from container registry. By default uses dockerhub. The image name needs to be the name of the respository on dockerhub. We can also use other container registries in that case we need to provide the complete url when pulling the image.
+
+To create bind mounts we can use the -v flag with the docker run command. The syntax is:  
+`-v /local/path:/container/path`   
+For volumes we can use:  
+`-v NAME:/container/path` 
+
+Here the data is also stored in the local machine but we don't have access to that. The data will survive even the container is stopped and removed.
+
+Containers are isolated but can be connected send requests to each other. For communication we can determine the container IP and use that. This IP might change and it is a lot of manual work. The recommended method is to create a docker network and add the containers to that network, and all the containers in the network can communicate each other using their names as request addresses. 
+
+#Kubernetes
+
+It is a set of concepts and frameworks which helps you with container orchestration and large scale deployment independent of the cloud provider. Kubernetes is an open source system for automating deployment, scaling, and management of containerized applications. The following are the problems with manual deployment:
+
+* Manual deployment of container is hard to maintain and more-error prone, containers might go down and need to be replaced manually. This is something we don't want for a serious application. We also might need more instances upon traffic spikes, we will also might need to manually scale up and down. In all the above deployments till we have seen now we had only 1 instance of the container. In reality that might not be enough. Also we will need to evenly distribute the traffic among container instances based on the traffic.
+
+A managed service like ECS will help with these problems to some extend. It automatically check container health and restarts them when it crash. ECS also helped us with autoscaling based on traffic. It also had load balancing which distributes the traffic between all running container instances. If we use a specific service by a cloud provider we are locked into that service. We needed to define everything as AWS mandates. The steps which works in AWS may not work in other cloud provider services. Just the docker knowledge is not enough in case if we want to switch to a different cloud provider.
+
+Kubernetes can help with the above problem. With kubernetes we have a way for configuring the deployments, scaling of containers, how the container should be monitored and replaced if it fails. We can do all of the above independent of the cloud provider. Kubernetes is an opensource system and the de facto standard for orchestrating containers and deployments. It has automatic deployment, scaling and load balancing, management of containers. Kubernetes allows us to write kubernetes configuration files where we define our desired deployment, number of instances, This can be passed through provider specific setup or tool and can be used on any cloud provider or remote machines. We can manually install kubernetes on any machine where we can leverage the kubernetes functionality. With kubernetes:
+
+* We have a standard way of describing the to be created and to be managed resource of the kubernetes cluster.
+* Cloud provider specific settings can be added in this file, if a certain cloud provider requires some extra configuration options we can add those in the main configuration file, if you want to use that configuration file with a different provider, you can remove or replace the provider specific configuration with the configuration options of the new provider, you don't need to re write the entire configuration file.
+
+Kubernetes is not a cloud service provider, it is not an alternative to cloud providers like AWS. It is an opensource project, it is a collection of software's which together can be used with any cloud provider. It is not a service by an cloud service, even though cloud providers have different services to enable kubernetes. It can be used with any provider and any hardware. The services of cloud providers can help on working with kubernetes easier. It is not restricted to any cloud provider. It is not just a software, it is a collection of tools and concepts which can help with deployment. It is not an alternative to docker, it works with docker containers. It is not a paid service, it is free and opensource. Though you might need to pay if you use a kubernetes service by a cloud provider. You will need to pay for the hardware resources that you use.
+
+Kubernetes can be thought of like a docker compose for multiple machines. Kubernetes makes deploying your containers, monitoring and restarting them automatically across multiple machines very easily.  
+The following are the core kubernetes concepts and architecture:
+
+* Pod(container): It is smallest unit in the kubernetes, which you can define with the configuration file for kubernetes to create. A pod holds a container. It might hold multiple containers which might need to work together.
+* Worker Node: The pod runs on a worker node, worker nodes run the containers of your application. Nodes are your virtual machines/virtual instances. It is a computer with a certain amount of CPU and memory and on that machine we can run our pods. You can have more than 1 pod running on the same worker node. In kubernetes we need at least 1 worker node for running the pods. For typical application we will have more than 1 worker node.
+* Proxy/Config: Kubernetes needs a proxy inside of the worker node, it is a tool that kubernetes sets up for managing the network traffic of the pods on that worker node. This determines the communication between the pods and the outside internet.
+
+If we are adding more worker nods the pods are automatically distributed by kubernetes across all available worker nodes. So we can have different and equal containers running on multiple worker nodes to distribute traffic evenly. 
+
+* Master Node: It is a remote machine which has the control plane running on it, which is responsible for interacting with the worker nodes and the pods running on them. Theoretically you can make one machine works as both master node and worker node, but for bigger applications the master node which itself will be split across multiple machines to ensure high availability. The worker nodes will be on other machines which are independent of the master node.
+* Control Plane:
+
+  
+If we are adding more worker nods the pods are automatically distributed by kubernetes across all available worker nodes. So we can have different and equal containers running on multiple worker nodes to distribute traffic evenly. 
+
+* Master Node: It is a remote machine which has the control plane running on it, which is responsible for interacting with the worker nodes and the pods running on them. Theoretically you can make one machine works as both master node and worker node, but for bigger applications the master node which itself will be split across multiple machines to ensure high availability. The worker nodes will be on other machines which are independent of the master node. So if one worker node goes down the master node doesn't go down with it.
+* Control Plane: It is a collection of different tools and services that runs on the master node.
+
+* Cluster: All the above components collectively forms a cluster. It is in one network in which all the above parts are connected. The master node can send instructions to a cloud provider api to tell the cloud provider to create cloud provider specific resources to replicate the specified end state on that cloud provider.
+
+Master node and control plane works together to work as a control center which interacts with the worker node to control them. When working with kubernetes you don't work directly with the pods, you work with control plane to let the kubernetes do the heavy lifting, the developer decides the end state that kubernetes take into account. 
+
+Kubernetes needs some advance setup for it to work, i.e, you need to provide a certain environment where kubernetes will work. You need to create the cluster and the node instances(worker +master nodes). You need to install kubernetes on all these nodes and you need to configure all these things you need. Depending on the cloud provider you need to setup extra resources your kubernetes cluster needs like the load balancer, file systems etc.   
+Kubernetes will not setup these resources. Instead kubernetes will use these resources. Once this is installed and setup is complete kubernetes will create and manage the pods. It will monitor them, re create them if they fail and scale the pods based on the traffic. Kubernetes utilizes the provided resources to apply your configuration. 
+
+A worker node is simply a machine running somewhere and the worker node is managed by the master node. To be precise what is happening on the worker node (e.g. creating a pod) is managed by the master node. Inside of the worker node we have pods. A pod hosts one or more application containers and their resources such as volumes, IP, run configurations etc. Kubernetes can create or delete pods. When a pod is deleted the pod internally is then able to run and manage the container that belongs to the pod. Typically there are more than pod running inside of a worker node. That can be a copy of another pod or pods for different tasks. Worker nodes are not task specific. Docker needs to be installed on worker node. We also need kubelet to be installed which acts as a communication device between the master node and worker node. This enables the master node to control the pods in the worker node. We also need the kube-proxy service which is responsible for network traffic.
+
+With kubernetes we just need to define the end state and if you are using a cloud provider, they have services which allows you to provide the kubernetes definition, then the cloud provider will setup all the instances and install all the required software for you. 
+
+Inside of the master node the most important service(software) is the the API server. The API server runs on the master node machine which is the counter part for kubelet services running on the worker nodes. There is also a Scheduler inside of the master node. It is responsible for watching our pods and choosing worker nodes in which new pods should be created on in case a new pods needs to be added when a pods goes unhealthy and goes down or due to scaling. This is responsible for telling the API server on what to tell to the worker nodes.   
+The Kube-Controller-Manager watches and controls the worker nodes overall and it ensure the correct number of pods up and running. It works closely with the scheduler and the API server. 
+
+The Cloud-Controller-Manager does the same thing as the kube-controller-manager but it is cloud provider specific. It tells the cloud provider what to do. It translates instructions to the cloud provider.   
+
+You might not need to manually create the master and worker nodes and install these services when you are working with a major cloud platform.   
+Important terms and concepts:
+
+* Clusters : A set of node machines which are running containerized applications and the controlled nodes (Master and worker nodes). This is the desired end state.
+* Nodes: Physical or virtual machines with certain hardware capacity which hosts one or more pods and communicates with the cluster. We have master and worker nodes.
+* Pods : I holds the application containers and their required resources. It is a shell around the container which starts the container and manage the container. Pods are managed by the master node. If a pod is created it is equivalent to running a container.
+* Containers : These are regular docker containers.
+* Services : A logical set of pods with a unique pod and container independent ip address. Services will be important for reaching our pods and the containers inside of them. Services allows us to expose the functionalities to the outside world.
+
+Kubermatics a **multi-cloud Kubernetes management platform that automates the deployment and lifecycle management** of Kubernetes clusters at scale
+
+Key points about what Kubermatic actually does:
+
+* **Automates operations** of thousands of Kubernetes clusters across multi-cloud, on-prem, and edge environments 1
+* **Centrally manages** the global automation of Kubernetes clusters with unparalleled density and resilience 2
+* Increases efficiency by **leveraging automation** across the Kubernetes lifecycle, including Day 2 operations 1
+* Can manage 6000+ user clusters from one master cluster with 85% less management time needed 1
+
+The platform is specifically designed to **reduce manual work** and automate cluster operations. Also there is an option to manage all of them manually if you have the relevant skills and experience. Alternatively most of the cloud providers have their own managed kubernetes service. For AWS we have Amazon Elastic Kubernetes Service. This allows us to have our own kubernetes configuration,
+
+so that we don't have to use AWS specific configuration. EKS only helps in managing the cluster. NOTE: Kubernetes will not create the instances, it will only manage the pods and mange them. Even if you use a managed service like EKS. Some resource allocation can be performed automatically if you use a manager service like EKS.
+
+For installing kubernetes we need a cluster with a master node and one or more worker nodes with all of the services installed. We need to install `kubectl` tool in our machine. This tool is used to send instructions to the cluster, for example to create a deployment, delete a deployment or change a deployment. With the kuberctl (kubecontrol) tool the administrator or developer is able to send instructions to the master node, it then asks the worker nodes to perform the particular operation. For example if you send an instruction to create more pods of a container, the master node will interact with the worker nodes to create extra pods. `kubectl `tool is somthing we install locally.
+
+We can use **minikube** to test and learn about kubernetes by setting it up locally. It simulates another machine on your machine (like a virtual machine). It will create a single node cluster where the master and worker are on the same machine. It is a great tool for learning and practicing kubernetes. It can be installed on any platform. Minikube is not a replacement for `kubectl `command. You always need the `kubectl `command locally even if you don't use minikube, or you have your cluster in cloud. 
+
+To install minikube on windows we need to run the `systeminfo` command on the command prompt. If you see an output like a hypervisor has been detected. Then you are good to go with the installation. Before you install minikube we need to install kubectl. You can use :  
+`choco install kubernetes-cli`  
+if you have chocolatey installed.  
+Use `scoop install kubectl` if you are using scoop. After this you can run  
+`kubectl version --client`   
+If everything is fine you will get a version as output. After the above step we need to navigate to the users folder and create a `.kube` folder. Inside this .kube folder run `echo. > config` which creates an empty file named config. This file tells the `kubectl `command to which cluster it should connect. It will be populated automatically.   
+After the above step we need to install minikube, we can use  
+`winget install Kubernetes.minikube` 
+
+You need to run docker desktop application before running the following command which starts a cluster.  
+`minikube start`   
+Alternatively if you are using docker desktop you don't need minikube you can use the kubernetes option inside of the docker.
+
+Kubernetes works with objects. The idea behind this is that we can create these objects by executing certain commands. Kubernetes will use the instructions encoded with the object to perform the desired actions. Objects can be created in 2 ways:
+
+1. Imperatively:
+2. Declaratively:
+
+There are certain kubernetes objects which we work with all the time such as:
+
+* Pod: It is smallest unit that kubernetes knows and interacts with. It runs one or multiple containers. The most common use case is one container per pod. If you want to tell kubernetes to create a pod and run a container in a worker node, you would tell kubernetes by creating a pod object with code or use the command and sending that object to kubernetes. Pods can also hold shared resources like volumes. Pods are part of the cluster and it can communicate with other pods or the outside world. But the pod has a cluster internal ip address by default which can be used to send requests to the pod(container inside of the pod). Containers inside a pod can communicate each other using localhost. Pods are ephemeral by default, i.e kubernetes will start, stop and replace them as needed. If a pod is removed data stored in the pod is lost. We can create pods on our own, but this is not something that we do often.
+
+* Deployment: It is also a key object when you work with kubernetes. Typically you don't work with pod object, but instead you work with deployment object. You create a deployment object which you then give instructions about number of pods and containers it should create and manage for you. Deployment object can control multiple pods. The core idea behind the deployment object is that we set a desired state, kubernetes will do everything to reach this target state. We define which pods and containers to run and the number of instances. This allows the kubernetes to create the pod objects and place them in worked nodes which have sufficient memory and CPU for the pods. We can pause the deployments, delete them and roll them back. Deployments can also be scaled to increase or decrease the number of pods. We can also use the auto scaling feature based on a metric such as traffic or cpu utilization, when these metrics exceeds kubernetes will automatically create more pods.
+
+It will also automatically remove those pods once the metrics are below the set threshold. When we create a deployment we manage one pod with a deployment, we can also create multiple deployments to have multiple pods manage by kubernetes. 
+
+Kubernetes still requires docker images to run containers. We need to first build the docker image. Then we can send the image to the cluster. We can then use the `kubectl `command to create a deployment. **The** `**kubectl create**` **command is a way of creating objects imperatively.** The command will look like:  
+`kubectl create deployment first-app --image=kub-first-app  
+`If you are getting an error check the context of kubectl using:  
+`kubectl config current-context  
+`If it shows `minikube `then we need to switch to docker desktop. The command is:  
+`kubectl config use-context docker-desktop`  
+This will automatically send the deployment object to the kubernetes cluster. We should provide the deployment with a name. We should pass the `--image` option where we want to specify the image for the container.   
+After creating the deployment we can check their status using `kubectl get deployments` . We can observe the ready column.
+
+If it shows like:
+
+```javaScript
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+first-app   0/1     1            0           7s
+```
+
+Then it means that deployment failed. To investigate further we can use:  
+`kubectl get pods`   
+This will show:
+
+```javaScript
+NAME                        READY   STATUS             RESTARTS   AGE
+first-app-7bc4c5754-62bg8   0/1     ImagePullBackOff   0          4m38s
+```
+
+This indicates that pod is not ready, and we can see the error as status. This is because when we send the deploy command with the image we are not sending the entire image to the virtual machine. Instead the kubernetes will look for the image. Our machine is currently existing on our local machine, so to fix the issue we should send the name of the image which part of a image registry like docker hub.   
+We can delete a deployment using:  
+`kubectl delete deployment first-app`   
+Then we can create a repository in docker hub. Then we can tag our local image and push it like:  
+
+```javaScript
+docker tag kub-first-app pgsangeethkumar/kub-first-app
+docker push pgsangeethkumar/kub-first-app
+```
+
+After this we can use the dockerhub image name when creating the deployment like:
+
+`kubectl create deployment first-app --image=pgsangeethkumar/kub-first-app`   
+Now when we get the deployments we will see:
+
+```javaScript
+kubectl get deployments
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+first-app   1/1     1            1           44s
+```
+
+```javaScript
+kubectl get pods
+NAME                         READY   STATUS    RESTARTS   AGE
+first-app-79b6b6b4dc-nnpkc   1/1     Running   0          88s
+```
+
+  
+What happened behind the scenes was when we executed kubectl create deployment command with the image which creates a deployment object and it then automatically sends it to the kubernetes cluster to the master node(control plane). On the master node the scheduler analyzes currently running pods and finds the best node for newly created pods. The newly created node will be moved to one of the worker nodes. These are all done automatically by kubernetes. On the worker node the kubelet manages the pods, starts the container and monitors it's health. The pod will contain the container based on the image which we defined when we created the deployment object.   
+With the current approach we cannot reach the application from outside of the cluster.
+
+To reach a pod and the container running inside of the pod, we need a service. **A service object is a kubernetes object which is responsible for exposing the pods to the cluster or externally.** Pods have an internal IP address by default, there are 2 problems with this, one is we cannot access this pod from outside of the cluster, the second problem is that it will change when a pod is replaced which happens frequently if we have scaling. We cannot rely on the IP address to communicate with a pod. A service, groups pods together and give them a shared IP address. This address will not change. We can also tell the service the expose this address to the outside of the cluster. Without services pods are very hard to reach and communication is very difficult, even internally. 
+
+We can create a service object using the `kubectl create service` command. There is an even more convenient command for exposing the pods created by a deployment. It is the `kubectl expose `command. This exposes a pod created by a deployment by creating a service. We need to specify that we need to expose a deployment followed by the name of the deployment. Also we need to pass 2 options. The first one is `--port=` which specifies the port which we want to expose. The second one is the type of the exposing which we want to create, there are different built in types, the default type is `ClusterIP` , which means that it will reachable from only inside of the cluster. This is not what we need here, we have `NodePort` which means that this deployment should be exposed with the help of the IP address of the worker node on which it is running. This will be accessible from the outside. 
+
+We have a better option type which is `LoadBalancer ` , which utilizes the load balancer which has to exist on the infrastructure on which the cluster runs. The load balancer will generate a unique address for the service and it also evenly distributes incoming traffic across all pods which are part of the service. This only matters when your infrastructure supports load balancing. Docker desktop supports this so we can use:  
+`kubectl expose deployment first-app --type=LoadBalancer --port=8080`   
+We can check if the service is created using:  
+`kubectl get services  
+`Which will show:
+
+```javaScript
+NAME         TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+first-app    LoadBalancer   10.101.68.45   localhost     8080:32705/TCP   57s
+kubernetes   ClusterIP      10.96.0.1      <none>        443/TCP          22h
+```
+
+We can access the application using the localhost.
+
+Kubernetes will automatically restart the pods in case of errors. If the errors happen frequently it will wait some time before restarting. It will wait longer for subsequent restarts if errors happens again to avoid infinite loops. The pod and the container inside of the pod are monitored.
+
+We can scale a deployment easily using:  
+`kubectl scale deployment/deployment_name --replicas=number_of_pods_to_scale`   
+So for our application's deployment we can use:  
+`kubectl scale deployment/first-app --replicas=3`   
+The replicas are simply the number of pods. We can check the pods by using the `kubectl get pods` command. The traffic will also be distributed evenly among the pods.   
+To scale the pods back down we can use the same command as above and specify the replicas as 1\. The command will look like:  
+`kubectl scale deployment/first-app --replicas=1`   
+This command will terminate the other 2 pods and eventually they will be removed.
+
+For updating the code we first need to make changes and perform the docker build again and push it to dockerhub. To update the deployment we can use the `kubectl set image` command. It allows us to specify the image for a deployment to update the image of a pod. You also need to specify which container image should be replaced, and from where it should be replaced. This syntax is like:  
+`kubectl set image deployment/deployment_name image_name=repository_tag`  
+ In our case we want to update the image of our pods from the dockerhub repository iteself. So, we can use:  
+`kubectl set image deployment/first-app kub-first-app=pgsangeethkumar/kub-first-app`   
+After running the above we will not be able to see the changes. Because new images will be downloaded only if there is difference in tags. So when building the image we can use an incrementing version number as tag.
+
+```javaScript
+docker build -t pgsangeethkumar/kub-first-app:2 .
+docker push pgsangeethkumar/kub-first-app:2
+```
+
+We can then provide the tag at the end of the set image command like:  
+`kubectl set image deployment/first-app kub-first-app=pgsangeethkumar/kub-first-app:2`   
+This will download the new image and deploy it. To check the status of the update we can use:  
+`kubectl rollout status deployment/deployment_name`   
+command. In our case:
+
+```javaScript
+kubectl rollout status deployment/first-app
+deployment "first-app" successfully rolled out
+```
+
+When you see this you can check the application and your changes will be updated.
+
+If you try to update the image with a tag that doesn't exist, it will try to deploy that. You can check the status of the deployment using:
+
+`kubectl rollout status deployment/deployment_name`   
+It will show an interactive session which updates based on the status. If we want to exist from that we can use ctrl+c to exit from that.  
+The old pods will not be removed until the new pods are up and running. Until the new pods are active the update will not be completed. In this case the new pods will never start because the image does not exist. We can rollback the update, if we want, we can use:  
+`kubectl rollout undo deployment/deployment_name` 
+
+This will undo the latest deployment.   
+We can check the deployment history of a deployment using:  
+`kubectl rollout history deployment/deployment_name`   
+For example:
+
+```javaScript
+kubectl rollout history deployment/first-app
+deployment.apps/first-app 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+```
+
+To get more details of a deployment we can use the revision id by passing it to the `--revision` option. eg:
+
+```javaScript
+kubectl rollout history deployment/first-app --revision=2
+deployment.apps/first-app with revision #2
+Pod Template:
+  Labels:       app=first-app
+        pod-template-hash=845477c9bc
+  Containers:
+   kub-first-app:
+    Image:      pgsangeethkumar/kub-first-app:2
+    Port:       <none>
+    Host Port:  <none>
+    Environment:        <none>
+    Mounts:     <none>
+  Volumes:      <none>
+  Node-Selectors:       <none>
+  Tolerations:  <none>
+```
+
+It will show like this.   
+To change to the original deployment instead of doing the undo rollout command multiple times, we can pass the revision id to `--to-revision` to go back to a revision. The command is like:  
+`kubectl rollout undo deployment/deployment_name --to-revision=revision_id  
+`Example:
+
+`kubectl rollout undo deployment/first-app --to-revision=1`   
+This will take a couple of seconds to reflect. 
+
+You should always tag your images when deploying otherwise it will be difficult to rollback because if you use untagged images kubernetes will automatically use the latest tag and fetch the latest image.   
+To delete a service we can use :  
+`kubectl delete service service_name`   
+example:  
+`kubectl delete service first-app`   
+To delete a deployment   
+`kubectl delete deployment deployment_name`   
+example:  
+`kubectl delete deployment first-app`   
+This will remove the deployments and pods of the deployment.
+
+Till now we have used the imperative approach where we write command to work with kubernetes objects. The potential problems with this approach are first, we need to memorize the commands and mainly we have to repeat them all the time, it is like using the docker run command, we used docker run to run containers. If there are multiple containers we need to run this command for all the images. Docker compose made that job easier. 
+
+Kubernetes allows us to have resource definition files. We can write down the configuration in a yaml file and do that for different object kubernetes understands. This is called Declarative approach. We use the `kubectl apply` command which will point to a yaml file which will run the configuration that needs to be applied to the cluster. The configuration file is used to define our target state and whenever we apply it kubenetes will use that target state and do whatever it takes to make it the current state. 
+
+We can create a `yaml `file with any name of our choice. There is a particular syntax which we need to follow. First of all we need to mention the `apiVersion`, no matter which type of resource. Kubernetes is actively under development so we should check the docs and find out the latest version. We can use the `apps/v1` as version now. Next, we need to specify the `kind `key, to define the type of object we want to create. If we are creating deployment we should use `Deployment` . There are only a handful of types we can use like `Service`, `Jobs `etc. After this you will typically want to add some metadata. This is crucial since we will be providing the name of the deployment in this. We can use the `metadata `key and nested inside that we set the `name` .   
+After the above steps we need to define the specifications of the deployment using the `spec `key. This is the core of the object. The `spec `is a nested key. 
+
+We can add number of pod instances we need using the `replicas `key. Even if you don't specify it kubernetes will assume it to be 1\. Then we should define the `template`. Here we define the pods that should be created as part of the deployment. Nested below template we add `metadata`. Since pod is a new object we should define this. We can add a name if we want but we must add the `labels `key. Nested below it we can provide any label we want. Here both the key and value are free to choose. You don't need to specify the kind here because the template of a deployment always defines the pod.   
+Then we add the specification for the template as the same level as metadata. Inside the `spec `key we have to define the `containers `key nested below. We should specify the containers as a list (using -)below the container key. This way we can define multiple containers. Every container should have a `name ` key whose value you can choose. 
+
+Below that on the same level we should pass the `image `key which we used to specify the image. The image name should be the name of an image from the registry. The configuration file will now look like:
+
+```javaScript
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: second-app-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: second-app
+    spec:
+      containers:
+        - name: second-node-app
+          image: pgsangeethkumar/kub-first-app:3
+```
+
+This is the bare minimum to create a deployment. After creating a file like above we can use the `kubectl `command. The syntax is:  
+`kubectl apply --filename=[path/file1.yaml, path/file2.yaml]`   
+or
+
+`kubectl apply -f path/file1.yaml,path/file2.yaml`  
+i.e you can have multiple files.   
+There is an error in the above file when you try to apply the configuration it will show an error like:
+
+```javaScript
+The Deployment "second-app-deployment" is invalid: 
+* spec.selector: Required value
+* spec.template.metadata.labels: Invalid value: {"app":"second-app"}: `selector` does not match template `labels`
+```
+
+We must define the `selector `key as the same level of `replicas `in the `spec `of deployment. Inside this we need to add the `matchLabels `key. We then need to provide the key value pair of the pod labels we want to match with this deployment should be nested below it. This means that we have a template for the deployment which define the pods for the deployment. But deployments are dynamic objects, for example if you scale the number of pods after a deployment is completed, these new pods will be managed by the already existing deployment. Deployment automatically watches all the pods that are created and determines weather any new pods it should control. 
+
+It selects such pods using the selector. Selectors can be used for all types of configuration. Here we can use 2 types of selectors, `matchLabels `and `matchExpressions` . We can use the `matchLabels `here because it is much easier to use. We can nest the `matchLabels `inside the `selector`. We then need to nest the key value pairs of the pods which should be controlled by the deployment. Since we already have defined the labels in template we have used. We can have any number of labels in the objects we create. We can use these labels to connect with another object, like the deployment using these. So the deployment will know the pods that are being created. We simply add the key value pairs of the pods that should be controlled under the `matchLabels`. The `matchLabels `should exactly match the containers (template's) labels otherwise it will not be controlled by the deployment. The updated file will look like:
+
+```javaScript
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: second-app-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: second-app
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: second-app
+        tier: backend
+    spec:
+      containers:
+        - name: second-node-app
+          image: pgsangeethkumar/kub-first-app:3
+    
+```
+
+After this we can use:  
+`kubectl apply -f deployment.yaml`   
+Which will create the deployment.   
+Here we only need to run the apply command, all the remaining configuration is applied through the configuration file.
+
+Having a deployment file is not enough we also need a `service.yaml` to create the service object. The service yaml file is similar to deployment yaml file to some extend. We need to define the apiVersion but we will provide `**v1** `as it's value instead of `apps/v1` . We should then specify the `kind ` as `Service` since we are making a service resource. We then need to provide the `metadata` inside which we can provide a `name `as you like. Then we need to define the `spec `key which let's us do the configuration. We need to provide the `selector`. Here we should specify which all pods should be part of this service. Because you control the pods with the service and not deployments. Here we don't use `matchLabels `we simply provide the labels without specifying the `matchLabels `key. We pass the same labels we used in the deployment. 
+
+**If there are multiple labels for the deployments and only 1 is matching in the service's selector those pods will be also parts of the service unlike that of the deployment file**.   
+Then we need to specify the ports and the type under the `spec`, we can specify more that one port under the `ports `key as a list. We should specify the `protocol `and `port `under ports. The `port` which we specify here will be exposed to the outside world. For protocol we use `'TCP'` . the port is 80, we also need to specify the `targetPort` inside of the container which it is listening on.   
+For the type we add the `type `key as the same level of ports, here we can use the permissible values for the types like `LoadBalancer`. The service object will now look like:
+
+```javaScript
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: second-app
+  ports:
+    - protocol: 'TCP'
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer
+  
+```
+
+  
+We then use the same apply command with the filename. Like:  
+`kubectl apply -f service.yaml` 
+
+This declarative method is less error prone and we can quickly review and make changes.
+
+**To make changes or updates we can simply change the yaml file and re apply the yaml file using the** `**apply** `**command.** For example, if we want to change the number of replicas we can simply update the number of replicas in the yaml file and apply it.
+
+eg:  
+`kubectl apply -f deployment.yaml` 
+
+Similarly we can also change the image like that. Simply change the image name and reapply the deployment yaml file. We can check this version into source control like git to maintain different versions of these yaml files.  
+We can delete the resources we created declaratively using the imperative method. You can also use the delete command with the filename of your resource you want to delete.
+
+syntax:  
+`kubectl delete -f path/filename.yaml,path/filename2.yaml`   
+The resources created from the file will be deleted.  
+eg:  
+`kubectl delete -f deployment.yaml,service.yaml` 
+
+You can also merge multiple files into a single file easily. We can merge the contents by separating the configurations with three dashes(---). All your resource definitions should be separated by these ---. When you are combining a service and deployment file it is a good practice to put the service configuration first and then followed by the deployment.   
+The file will now look like:
+
+```javaScript
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: second-app
+  ports:
+    - protocol: 'TCP'
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer
+  
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: second-app-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: second-app
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: second-app
+        tier: backend
+    spec:
+      containers:
+        - name: second-node-app
+          image: pgsangeethkumar/kub-first-app:3
+          
+```
+
+The command to run this would be:  
+`kubectl apply -f master-deployment.yaml`   
+You can also delete the created resources in a single step like:  
+`kubectl delete -f master-deployment.yaml` 
+
+`matchExpressions `is a more modern and alternative to `matchLabels`, they are only supported in modern objects such as deployment. It is a more powerful way which provides you more configuration options. Unlike `matchLabels `here we don't have multiple key value pairs, instead you have a list of expressions which all of them should be satisfied to match an object. It is defined in `{}` . Inside this we specify the `key `and it's value as the key of the label which we want to select. The next is `values `key which accepts a number of possible values enclosed in `[]` separated by commas. We can also add an `operator `key where you can pass a couple of predefined operators. The possible operators are `In`, `NotIn`, `Exists`, `DoesNotExist` . For example consider the below matchExpressions:
+
+```javaScript
+matchExpressions:
+    - {key:app, operator: In, values:[second-app, first-app]}
+```
+
+Here it will select matches who have app as key and the values are one of second-app or first-app in the labels. 
+
+This is a more powerful approach which let's us include or exclude pods. It is totally optional to use.   
+You can also use selectors when running commands. For example with the delete command. we can use the `-l `flag to delete objects by label. You must make sure that the labels are present for the services you want to delete. We can add like:
+
+```javaScript
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    group: example
+..................
+```
+
+in the service and,
+
+```javaScript
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: second-app-deployment
+  labels:
+    group: example
+```
+
+in the deployment. After making those changes we can apply them. Then we can use the delete command like:  
+`kubectl delete type_of_object_to_delete1, type_2 -l key=value`   
+In our case:  
+`kubectl delete services,deployments -l group=example`   
+We have to tell the type of resource we want to delete otherwise this will not work.
+
+With selectors you can only select by labels defined in the metadata, and not name. 
+
+We can add the `livenessProbe `key to the container definition to override how kubernetes determines weather your pod is healthy or not. Inside this we can provide the `httpGet `key to send a get request from pod to the running application. We should provide the `path` and `port `nested in this. If you want you can also pass `httpHeaders`. Then on the same level as `httpGet `we must provide `periodSeconds `key to define how often the liveness probe to be performed. We can also set an `initialDelaySeconds `to tell kubernetes to wait for some extra time when probe is done at the first time after starting the pod. The code will look like:
+
+```javaScript
+    spec:
+      containers:
+        - name: second-node-app
+          image: pgsangeethkumar/kub-first-app:3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            periodSeconds: 10
+            initialDelaySeconds: 5
+```
+
+Even though it worked before without us defining the probe explicitly, it is certainly useful when you want to use a custom path in your application for health check.
+
+You can also configure various aspects of the containers. For example we can set the `imagePullPolicy `to `Always `to always pull the latest image even if you have no tag specified at all. You can also set it other values like `Never `or `IfNotPresent` . You can also set various things such as environment variables. You can find more configuration options in the official docs. 
